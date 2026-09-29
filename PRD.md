@@ -6,17 +6,22 @@ Status: DRAFT for discussion · Owner: Siva
 Give college leadership daily visibility into students' LeetCode and HackerRank progress, at institute level and department level. Students never log in; staff view dashboards built from public profile data scraped nightly.
 
 ## 2. Users and access
-Single auth engine: **username + password** (no email, no self-serve reset). ~13 accounts total.
+Single auth engine: **username + password** (no email, no self-serve reset). Passwords are reset by an admin.
 
-| Role | Accounts | Sees | Can manage |
-|---|---|---|---|
-| `admin` | 1 | Everything | Students (add/edit/delete/import), staff accounts, password resets |
-| `institute` | Principal, Vice Chairman | Everything (all departments) | Nothing (read-only) |
-| `hod` | 10 (one per dept) | Own department only | Nothing (read-only) |
+Two roles, with access controlled by per-user **scopes**:
+
+| Role | Can do |
+|---|---|
+| `admin` | See everything; create and edit users and their scopes, reset passwords, add departments, add/edit/delete students (form and CSV) |
+| `viewer` | Read-only, limited to their scopes |
+
+A scope is a department (or all departments) plus an optional year of study (1st-4th, or all years). A viewer can have several scopes. Examples: Principal and Vice Chairman have one all-departments scope; a HOD has their department; a 2nd-year coordinator has department + year 2.
 
 Rules:
-- Scope comes from the logged-in user's row (`role`, `dept_id`), never from request parameters. A HOD cannot see another dept by editing a URL.
-- Staff accounts are seeded/created by admin. Password reset = admin sets a new one.
+- Scope is enforced by the server; asking for a department or year outside one's scopes is refused.
+- "Year" means year of study, so a year-2 scope follows whoever is currently in 2nd year and moves up each June.
+- Admin-created or reset accounts must set their own password at first login.
+- Initial accounts: `admin`, `principal`, `vice.chairman`, `hod.it`.
 
 ## 3. Screens and flow
 
