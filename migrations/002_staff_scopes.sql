@@ -1,5 +1,13 @@
 -- Replaces the fixed hod/institute roles with two roles (admin, viewer) plus per-user scopes.
--- No staff data existed yet, so the table is rebuilt.
+-- No staff data existed when this was written, so the table is rebuilt. The guard makes it refuse
+-- to run (and delete accounts) if that assumption is ever wrong.
+do $$
+begin
+  if exists (select 1 from staff) then
+    raise exception 'Migration 002 rebuilds the staff table and would delete existing accounts. Export or recreate them first.';
+  end if;
+end $$;
+
 drop table staff;
 
 create table staff (

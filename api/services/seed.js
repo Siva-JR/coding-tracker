@@ -16,10 +16,16 @@ const ACCOUNTS = [
   { username: 'hod.it', role: 'viewer', title: 'HOD - IT', deptCode: 'IT' },
 ];
 
+// Development passwords published in .env.example; never acceptable for a production seed.
+const KNOWN_DEV_PASSWORDS = ['rmkec@123'];
+
 // Idempotent: existing departments and accounts are left untouched.
-export async function seedDefaults(db, { password }) {
+export async function seedDefaults(db, { password, production = false }) {
   const problem = passwordProblem(password);
   if (problem) throw new Error(`Seed password rejected: ${problem}`);
+  if (production && KNOWN_DEV_PASSWORDS.includes(password)) {
+    throw new Error('Seed password rejected: that is the published development password; choose a different SEED_PASSWORD for production');
+  }
 
   for (const [name, code] of DEPARTMENTS) {
     await db.query('insert into departments (name, code) values ($1, $2) on conflict (code) do nothing', [name, code]);

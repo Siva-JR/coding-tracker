@@ -58,3 +58,8 @@ test('re-running the seed changes nothing, including passwords', async () => {
 test('a weak seed password is refused', async () => {
   await assert.rejects(() => seedDefaults(t.db, { password: 'short' }), /Seed password rejected/);
 });
+
+test('the published development password is refused for a production seed', async () => {
+  await assert.rejects(() => seedDefaults(t.db, { password: 'rmkec@123', production: true }), /published development password/);
+  await seedDefaults(t.db, { password: 'a-Different-Password-1', production: true });
+});

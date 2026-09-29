@@ -11,7 +11,7 @@ if (!password) {
 const db = createPool();
 try {
   await migrate(db);
-  const { created, existing } = await seedDefaults(db, { password });
+  const { created, existing } = await seedDefaults(db, { password, production: process.env.NODE_ENV === 'production' });
   console.log(`Created accounts: ${created.join(', ') || 'none'}`);
   if (existing.length) console.log(`Already existed (unchanged): ${existing.join(', ')}`);
 } finally {

@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startTestDb } from './helpers/testdb.js';
+import { readFile } from 'node:fs/promises';
 import { migrate } from '../api/migrate.js';
 
 let t;
@@ -46,4 +47,11 @@ test('one snapshot per student, platform and day', async () => {
   const insert = () => t.db.query("insert into snapshots (student_id, platform, snap_date, solved_total) values ($1, 'leetcode', '2026-09-30', 10)", [s.id]);
   await insert();
   await assert.rejects(insert, /duplicate key/);
+});
+
+test('migration 002 refuses to run over existing staff accounts instead of deleting them', async () => {
+  const sql = await readFile(new URL('../migrations/002_staff_scopes.sql', import.meta.url), 'utf8');
+  await t.db.query("insert into staff (username, password_hash, role) values ('keepme', 'x', 'admin')");
+  await assert.rejects(() => t.db.query(sql), /would delete existing accounts/);
+  assert.equal((await t.db.query("select count(*)::int as n from staff where username = 'keepme'")).rows[0].n, 1);
 });

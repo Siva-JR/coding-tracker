@@ -17,6 +17,7 @@ const fetchProfile = async (platform, username) => {
   calls.push(`${platform}:${username}`);
   if (username.startsWith('missing')) return { status: 'not_found' };
   if (username.startsWith('flaky')) return { status: 'error', error: 'HTTP 429', retryable: true };
+  if (username.startsWith('badsnap')) return { status: 'ok', data: { solvedTotal: null, solvedEasy: null, solvedMedium: null, solvedHard: null, globalRank: null, hrStars: null } };
   return {
     status: 'ok',
     data: { solvedTotal: 50 + username.length, solvedEasy: 1, solvedMedium: 2, solvedHard: 3, globalRank: platform === 'leetcode' ? 1234 : null, hrStars: platform === 'hackerrank' ? 4 : null },
@@ -80,6 +81,15 @@ test('a temporary fetch failure adds the student with a warning and no snapshot'
   assert.match(res.body.warnings[0], /flaky_lc/);
   assert.deepEqual(await leaderboard('leetcode'), []);
   assert.equal((await t.db.query("select state from platform_accounts where username = 'flaky_lc'")).rows[0].state, 'active');
+});
+
+test('a failure storing the first snapshot is a warning, not an error, and a retry does not conflict', async () => {
+  const res = await add({ leetcodeUrl: lc('badsnap_lc'), hackerrankUrl: null });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.warnings.length, 1);
+  assert.match(res.body.warnings[0], /first snapshot could not be stored/);
+  assert.equal(await count(), 1, 'the student was saved');
+  assert.equal(await count('snapshots'), 0);
 });
 
 test('a profile that does not exist is rejected and nothing is saved', async () => {

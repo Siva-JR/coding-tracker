@@ -85,11 +85,19 @@ const notFoundErrors = (checks) => checks.filter((c) => c.status === 'not_found'
 
 const rollTaken = (rollNo) => new ValidationError([`roll number ${rollNo} already exists`], { status: 409, code: 'ROLL_NUMBER_EXISTS' });
 
+// The student already exists by now, so a failure here becomes a warning rather than an error;
+// the next scrape fills in the snapshot.
 async function storeFirstSnapshots(db, studentId, checks, now) {
+  const warnings = [];
   for (const c of checks.filter((x) => x.status === 'ok')) {
-    const { rows: [account] } = await db.query('select id, student_id, platform from platform_accounts where student_id = $1 and platform = $2', [studentId, c.platform]);
-    if (account) await recordSuccess(db, account, c.data, { now });
+    try {
+      const { rows: [account] } = await db.query('select id, student_id, platform from platform_accounts where student_id = $1 and platform = $2', [studentId, c.platform]);
+      if (account) await recordSuccess(db, account, c.data, { now });
+    } catch {
+      warnings.push(`${c.platform}: saved, but the first snapshot could not be stored; the next scrape will fill it`);
+    }
   }
+  return warnings;
 }
 
 function describeChecks(accounts, checks) {
@@ -149,12 +157,12 @@ export async function addStudent(db, input, { verify = false, fetchProfile = def
     return student.id;
   });
 
-  await storeFirstSnapshots(db, studentId, checks, now);
+  const snapshotWarnings = await storeFirstSnapshots(db, studentId, checks, now);
   return {
     studentId,
     student: await getStudent(db, studentId),
     accounts: describeChecks(value.accounts, checks),
-    warnings: warningsFor(checks),
+    warnings: [...warningsFor(checks), ...snapshotWarnings],
   };
 }
 
@@ -272,8 +280,8 @@ export async function updateStudent(db, id, input, { fetchProfile = defaultFetch
     }
   });
 
-  await storeFirstSnapshots(db, id, checks, now);
-  return { student: await getStudent(db, id), warnings: warningsFor(checks) };
+  const snapshotWarnings = await storeFirstSnapshots(db, id, checks, now);
+  return { student: await getStudent(db, id), warnings: [...warningsFor(checks), ...snapshotWarnings] };
 }
 
 export async function deleteStudent(db, id) {
