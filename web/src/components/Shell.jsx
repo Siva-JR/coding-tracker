@@ -6,6 +6,7 @@ import { useAuth } from '../context/Auth.jsx';
 import { api, isSample } from '../api/index.js';
 import { longDate } from '../lib/format.js';
 import { describeScopes } from '../lib/access.js';
+import { BrandBar, Footer } from './Brand.jsx';
 import { useScope } from '../context/Scope.jsx';
 
 function Tool({ to, icon, label, end, badge }) {
@@ -99,7 +100,9 @@ export default function Shell() {
             </div>
           )}
           <main className={`scroll${presenting ? ' bare' : ''}`} ref={scrollRef} id="main" tabIndex={-1}>
+            {!presenting && <BrandBar />}
             <Outlet />
+            {!presenting && <Footer />}
           </main>
         </div>
       </div>

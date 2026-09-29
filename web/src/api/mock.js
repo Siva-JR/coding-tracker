@@ -5,6 +5,7 @@ import { DEPARTMENTS, USERS, TODAY_ISO, HISTORY_DAYS, dayIso, generateStudents, 
 import { parseProfileUrl, profileUrl } from '../lib/profileUrl.js';
 import { batchYearFor } from '../lib/yearOfStudy.js';
 import { scopeCovers } from '../lib/access.js';
+import { checkGithubUrl } from '../lib/github.js';
 
 const students = generateStudents();
 const staff = USERS.map((u) => ({ ...u }));
@@ -211,7 +212,7 @@ export async function activity(user, { deptId, limit = 8 } = {}) {
 function studentSummary(s) {
   return {
     id: s.id, name: s.name, rollNo: s.rollNo, deptId: s.deptId, deptCode: s.deptCode, deptName: deptById(s.deptId).name,
-    batchYear: s.batchYear, yearOfStudy: yearOf(s), leetcodeUsername: s.leetcodeUsername, hackerrankUsername: s.hackerrankUsername,
+    batchYear: s.batchYear, yearOfStudy: yearOf(s), leetcodeUsername: s.leetcodeUsername, hackerrankUsername: s.hackerrankUsername, githubUrl: s.githubUrl ?? null,
     leetcode: {
       status: s.leetcode.status, total: total(s, 'leetcode'), easy: s.leetcode.easy, medium: s.leetcode.medium, hard: s.leetcode.hard,
       globalRank: s.leetcode.globalRank, lastOk: s.leetcode.lastOk, lastError: s.leetcode.lastError, weekGain: gain(s, 'leetcode', 7),
@@ -280,7 +281,7 @@ function accountsOf(s) {
 }
 
 const adminStudent = (s) => ({
-  id: s.id, rollNo: s.rollNo, name: s.name, deptId: s.deptId, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: yearOf(s), accounts: accountsOf(s),
+  id: s.id, rollNo: s.rollNo, name: s.name, deptId: s.deptId, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: yearOf(s), githubUrl: s.githubUrl ?? null, accounts: accountsOf(s),
 });
 
 export async function adminStudents(user, { deptId, batchYear, q, page = 1, pageSize = 50 } = {}) {
@@ -295,13 +296,14 @@ export async function adminStudents(user, { deptId, batchYear, q, page = 1, page
 }
 
 // Returns the row's problems, or the parsed accounts.
-function inspectRow(row, seen) {
+function inspectRow(row, seen, { lenientGithub = false } = {}) {
   const errors = [];
+  const warnings = [];
   if (!String(row.name ?? '').trim()) errors.push('name is required');
   const roll = String(row.rollNo ?? '').trim();
-  if (!roll) errors.push('rollNo is required');
-  else if (students.some((s) => s.rollNo.toLowerCase() === roll.toLowerCase())) errors.push(`roll number ${roll} already exists`);
-  else if (seen?.has(roll.toLowerCase())) errors.push(`roll number ${roll} appears more than once in this file`);
+  if (!roll) errors.push('reg no is required');
+  else if (students.some((s) => s.rollNo.toLowerCase() === roll.toLowerCase())) errors.push(`reg no ${roll} already exists`);
+  else if (seen?.has(roll.toLowerCase())) errors.push(`reg no ${roll} appears more than once in this file`);
   const dept = DEPARTMENTS.find((d) => d.code === String(row.deptCode ?? '').trim().toUpperCase() || d.id === Number(row.deptId));
   if (!dept) errors.push(row.deptCode || row.deptId ? `unknown department: ${row.deptCode ?? row.deptId}` : 'department is required');
   const batch = Number(row.batchYear);
@@ -316,12 +318,21 @@ function inspectRow(row, seen) {
     else accounts.push({ platform, username: p.username });
   }
   if (!gave) errors.push('at least one profile URL is required');
-  return { errors, dept, batch, roll, accounts };
+  // GitHub is only stored for now. From a CSV a bad link is dropped with a warning; by hand it is an error.
+  let githubUrl = null;
+  const rawGithub = String(row.githubUrl ?? '').trim();
+  if (rawGithub) {
+    const bad = checkGithubUrl(rawGithub);
+    if (!bad) githubUrl = /^https?:\/\//i.test(rawGithub) ? rawGithub : `https://${rawGithub}`;
+    else if (lenientGithub) warnings.push(`github: ${bad}; the GitHub link was not saved`);
+    else errors.push(`github: ${bad}`);
+  }
+  return { errors, warnings, dept, batch, roll, accounts, githubUrl };
 }
 
 const solvedFor = (platform, username) => (platform === 'leetcode' ? hash(username) % 420 : hash(username) % 140);
 
-function insertStudent({ dept, batch, roll, accounts }, row) {
+function insertStudent({ dept, batch, roll, accounts, githubUrl }, row) {
   const flat = (n) => Array.from({ length: HISTORY_DAYS }, () => n);
   const lc = accounts.find((a) => a.platform === 'leetcode');
   const hr = accounts.find((a) => a.platform === 'hackerrank');
@@ -329,7 +340,7 @@ function insertStudent({ dept, batch, roll, accounts }, row) {
   const hrN = hr ? solvedFor('hackerrank', hr.username) : 0;
   const s = {
     id: nextStudentId++, rollNo: roll, name: row.name.trim(), deptId: dept.id, deptCode: dept.code, batchYear: batch,
-    leetcodeUsername: lc?.username ?? null, hackerrankUsername: hr?.username ?? null,
+    leetcodeUsername: lc?.username ?? null, hackerrankUsername: hr?.username ?? null, githubUrl: githubUrl ?? null,
     leetcode: lc
       ? { status: 'ok', history: flat(lcN), easy: Math.round(lcN * 0.6), medium: Math.round(lcN * 0.33), hard: Math.round(lcN * 0.07), globalRank: null, lastError: null, lastOk: TODAY_ISO }
       : { status: 'ok', history: null, easy: 0, medium: 0, hard: 0, globalRank: null, lastError: null, lastOk: null },
@@ -369,13 +380,13 @@ export async function validateRows(user, rows) {
   const seen = new Set();
   return {
     results: rows.map((row, index) => {
-      const r = inspectRow(row, seen);
+      const r = inspectRow(row, seen, { lenientGithub: true });
       if (r.roll) seen.add(r.roll.toLowerCase());
-      if (r.errors.length) return { index, checked: true, ok: false, errors: r.errors, warnings: [], accounts: [] };
+      if (r.errors.length) return { index, checked: true, ok: false, errors: r.errors, warnings: r.warnings, accounts: [] };
       const checks = verifyAccounts(r.accounts);
       const notFound = checks.filter((c) => c.verified === 'not_found').map((c) => `${c.platform}: profile "${c.username}" was not found`);
       return {
-        index, checked: true, ok: !notFound.length, errors: notFound, warnings: [],
+        index, checked: true, ok: !notFound.length, errors: notFound, warnings: r.warnings,
         accounts: checks.map((c) => ({ platform: c.platform, username: c.username, verified: c.verified === 'ok' ? 'ok' : 'unverified', solvedTotal: c.solvedTotal ?? null })),
       };
     }),
@@ -388,9 +399,9 @@ export async function importRows(user, rows) {
   const created = [];
   const skipped = [];
   rows.forEach((row, index) => {
-    const r = inspectRow(row);
+    const r = inspectRow(row, undefined, { lenientGithub: true });
     if (r.errors.length) { skipped.push({ index, rollNo: r.roll || null, reason: r.errors.join('; ') }); return; }
-    created.push({ index, studentId: insertStudent(r, row).id, rollNo: r.roll });
+    created.push({ index, studentId: insertStudent(r, row).id, rollNo: r.roll, ...(r.warnings.length ? { warnings: r.warnings } : {}) });
   });
   return { created, skipped };
 }
@@ -404,11 +415,17 @@ export async function updateStudent(user, id, patch) {
   if (patch.name !== undefined) { if (!String(patch.name).trim()) errors.push('name is required'); else s.name = String(patch.name).trim(); }
   if (patch.rollNo !== undefined) {
     const roll = String(patch.rollNo).trim();
-    if (!roll) errors.push('rollNo is required');
-    else if (students.some((x) => x.id !== s.id && x.rollNo.toLowerCase() === roll.toLowerCase())) throw new ApiError(409, 'ROLL_NUMBER_EXISTS', `roll number ${roll} already exists`);
+    if (!roll) errors.push('reg no is required');
+    else if (students.some((x) => x.id !== s.id && x.rollNo.toLowerCase() === roll.toLowerCase())) throw new ApiError(409, 'ROLL_NUMBER_EXISTS', `reg no ${roll} already exists`);
     else s.rollNo = roll;
   }
   if (patch.batchYear !== undefined) s.batchYear = Number(patch.batchYear);
+  if (patch.githubUrl !== undefined) {
+    const raw = String(patch.githubUrl ?? '').trim();
+    const bad = raw ? checkGithubUrl(raw) : null;
+    if (bad) errors.push(`github: ${bad}`);
+    else s.githubUrl = raw ? (/^https?:\/\//i.test(raw) ? raw : `https://${raw}`) : null;
+  }
   if (patch.deptId !== undefined) { const d = deptById(Number(patch.deptId)); if (d) { s.deptId = d.id; s.deptCode = d.code; } else errors.push('unknown department'); }
   for (const [platform, key, field] of [['leetcode', 'leetcodeUrl', 'leetcodeUsername'], ['hackerrank', 'hackerrankUrl', 'hackerrankUsername']]) {
     if (patch[key] === undefined) continue;

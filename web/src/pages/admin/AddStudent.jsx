@@ -5,10 +5,11 @@ import { useToast } from '../../components/Toasts.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { batchYearFor } from '../../lib/yearOfStudy.js';
 import { parseProfileUrl } from '../../lib/profileUrl.js';
+import { checkGithubUrl } from '../../lib/github.js';
 import { num } from '../../lib/format.js';
 import { ErrorBox, platformName } from './shared.jsx';
 
-const BLANK = { name: '', rollNo: '', deptCode: '', batchYear: '', leetcodeUrl: '', hackerrankUrl: '' };
+const BLANK = { name: '', rollNo: '', deptCode: '', batchYear: '', leetcodeUrl: '', hackerrankUrl: '', githubUrl: '' };
 
 export default function AddStudent() {
   const toast = useToast();
@@ -31,6 +32,7 @@ export default function AddStudent() {
     batchYear: !(Number(f.batchYear) >= batchYearFor(4) && Number(f.batchYear) <= youngest) && `Between ${batchYearFor(4)} and ${youngest}`,
     leetcodeUrl: optionalUrl('leetcode', 'leetcodeUrl') || (noUrl && 'Add at least one profile URL'),
     hackerrankUrl: optionalUrl('hackerrank', 'hackerrankUrl'),
+    githubUrl: checkGithubUrl(f.githubUrl),
   };
   const valid = Object.values(errs).every((e) => !e);
   const show = (k) => touched[k] && errs[k];
@@ -76,7 +78,7 @@ export default function AddStudent() {
       )}
       <div className="form-grid">
         {field('name', 'Full name', { input: { autoComplete: 'off' } })}
-        {field('rollNo', 'Roll number', { input: { autoComplete: 'off', placeholder: '24CSE201' } })}
+        {field('rollNo', 'Reg no', { input: { autoComplete: 'off', placeholder: '111725203001' } })}
         <div className="field">
           <label htmlFor="f-dept">Department</label>
           <select id="f-dept" className={`input ${show('deptCode') ? 'invalid' : ''}`} value={f.deptCode} onChange={set('deptCode')} onBlur={blur('deptCode')}>
@@ -87,7 +89,8 @@ export default function AddStudent() {
         </div>
         {field('batchYear', 'Batch (graduation year)', { input: { inputMode: 'numeric', placeholder: String(batchYearFor(3)) }, hint: `${youngest} = 1st year, ${batchYearFor(4)} = 4th year` })}
         {field('leetcodeUrl', 'LeetCode profile URL', { full: true, input: { placeholder: 'https://leetcode.com/u/username', inputMode: 'url' } })}
-        {field('hackerrankUrl', 'HackerRank profile URL', { full: true, input: { placeholder: 'https://www.hackerrank.com/profile/username', inputMode: 'url' }, hint: 'At least one of the two URLs is required.' })}
+        {field('hackerrankUrl', 'HackerRank profile URL', { full: true, input: { placeholder: 'https://www.hackerrank.com/profile/username', inputMode: 'url' }, hint: 'At least one of LeetCode or HackerRank is required.' })}
+        {field('githubUrl', 'GitHub profile URL', { full: true, input: { placeholder: 'https://github.com/username', inputMode: 'url' } })}
       </div>
       <div style={{ marginTop: 20, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn" disabled={busy}>{busy ? 'Checking profiles…' : 'Validate & add'}</button>

@@ -78,6 +78,7 @@ export default function StudentDetail() {
               <div className="meta">
                 <span className="chip blue">{ordinalYear(s.yearOfStudy)}</span>
                 <span className="chip">Batch {s.batchYear}</span>
+                {s.githubUrl && <a className="chip" href={s.githubUrl} target="_blank" rel="noreferrer noopener">GitHub <Icon name="external" size={12} /></a>}
               </div>
             </div>
           </header>

@@ -23,15 +23,19 @@ export function parseCsv(text) {
   return rows;
 }
 
-// Columns the file must have (URLs are both optional per row, but a row needs at least one).
+// Columns a CSV needs (a student needs at least one profile link).
 const ALIASES = {
   name: ['name', 'student name', 'student'],
-  rollNo: ['roll_no', 'roll no', 'rollno', 'roll number', 'register no', 'register number'],
+  rollNo: ['reg_no', 'reg no', 'regno', 'reg number', 'registration number', 'register no', 'register number', 'roll_no', 'roll no', 'rollno', 'roll number'],
   deptCode: ['department', 'dept', 'department code'],
   batchYear: ['batch', 'batch_year', 'batch year'],
   leetcodeUrl: ['leetcode_url', 'leetcode', 'leetcode url'],
   hackerrankUrl: ['hackerrank_url', 'hackerrank', 'hackerrank url'],
+  githubUrl: ['github_url', 'github', 'github url', 'github link'],
 };
+
+// Columns a file may leave out.
+const OPTIONAL = new Set(['githubUrl']);
 
 export function rowsFromCsv(text) {
   const grid = parseCsv(text);
@@ -41,22 +45,23 @@ export function rowsFromCsv(text) {
   const missing = [];
   for (const [key, names] of Object.entries(ALIASES)) {
     const at = header.findIndex((h) => names.includes(h));
-    if (at < 0) missing.push(names[0]); else idx[key] = at;
+    if (at >= 0) idx[key] = at;
+    else if (!OPTIONAL.has(key)) missing.push(names[0]);
   }
   if (missing.length) return { rows: [], missing };
-  const cell = (r, k) => (r[idx[k]] || '').trim();
+  const cell = (r, k) => (idx[k] === undefined ? '' : (r[idx[k]] || '').trim());
   return {
     rows: grid.slice(1).map((r, n) => ({
       key: n, name: cell(r, 'name'), rollNo: cell(r, 'rollNo'), deptCode: cell(r, 'deptCode'),
-      batchYear: cell(r, 'batchYear'), leetcodeUrl: cell(r, 'leetcodeUrl'), hackerrankUrl: cell(r, 'hackerrankUrl'),
+      batchYear: cell(r, 'batchYear'), leetcodeUrl: cell(r, 'leetcodeUrl'), hackerrankUrl: cell(r, 'hackerrankUrl'), githubUrl: cell(r, 'githubUrl'),
     })),
     missing: [],
   };
 }
 
 export const CSV_TEMPLATE =
-  'name,roll_no,department,batch,leetcode_url,hackerrank_url\n' +
-  'Arun Kumar,24CSE201,CSE,2028,https://leetcode.com/u/arunkumar,https://www.hackerrank.com/profile/arun_kumar\n';
+  'name,reg_no,department,batch,leetcode_url,hackerrank_url,github_url\n' +
+  'Arun Kumar,24CSE201,CSE,2028,https://leetcode.com/u/arunkumar,https://www.hackerrank.com/profile/arun_kumar,https://github.com/arunkumar\n';
 
 /** Rows sent to the API don't need our local `key`. */
 export const apiRow = ({ key, ...row }) => row;

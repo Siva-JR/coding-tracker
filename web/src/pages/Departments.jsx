@@ -30,7 +30,7 @@ export default function Departments() {
                 <div className="dept-code">{d.code}</div>
                 <div className="dept-name">{d.name}</div>
               </div>
-              <Icon name="chevron" size={22} style={{ color: 'var(--blue)' }} />
+              <Icon name="chevron" size={22} style={{ color: 'var(--accent)' }} />
             </div>
             <div className="dept-stats">
               <div><b className="num">{d.students}</b><span>students</span></div>

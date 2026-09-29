@@ -8,7 +8,7 @@ import StudentsTab from './admin/StudentsTab.jsx';
 import UsersTab from './admin/UsersTab.jsx';
 import DepartmentsTab from './admin/DepartmentsTab.jsx';
 
-const TABS = [['add', 'Add student'], ['import', 'Import CSV'], ['students', 'Students'], ['users', 'Users'], ['departments', 'Departments']];
+const TABS = [['add', 'Add student'], ['import', 'Import'], ['students', 'Students'], ['users', 'Users'], ['departments', 'Departments']];
 
 export default function Admin() {
   const { user } = useAuth();

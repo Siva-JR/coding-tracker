@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/Auth.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { Blobs } from '../components/Decor.jsx';
+import { Crest, Footer, YearsMark } from '../components/Brand.jsx';
 
 /** Shown when an admin created or reset the account: a new password is required before anything else. */
 export default function ChangePassword() {
@@ -36,10 +37,11 @@ export default function ChangePassword() {
       <div className="bezel">
         <div className="glass">
           <Blobs />
+          <YearsMark height={64} />
           <div className="scroll bare" style={{ padding: 0 }}>
             <div className="login-wrap">
               <div className="login">
-                <Icon name="lock" className="cap" strokeWidth="1.6" />
+                <Crest height={96} className="login-crest" />
                 <h1>Set a <em>new password</em></h1>
                 <p className="tag">Hi {user.displayTitle || user.username}, an administrator set your current password. Pick your own to continue.</p>
                 <form className="card" onSubmit={submit} noValidate>
@@ -57,6 +59,7 @@ export default function ChangePassword() {
               </div>
             </div>
           </div>
+          <Footer floating />
         </div>
       </div>
     </div>

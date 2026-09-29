@@ -4,6 +4,7 @@ import { api } from '../api/index.js';
 import { useScope } from '../context/Scope.jsx';
 import { num } from '../lib/format.js';
 import { Icon } from '../components/Icons.jsx';
+import { BrandBar, Footer } from '../components/Brand.jsx';
 
 const SLIDE_MS = 12000;
 
@@ -73,6 +74,7 @@ export default function Present() {
 
   return (
     <div className="present">
+      <BrandBar />
       <div className="present-head">
         <div>
           <p className="hand">{s.sub}</p>
@@ -100,6 +102,7 @@ export default function Present() {
         <span className="hint">{i + 1} / {slides.length} · Space pauses, arrows skip, Esc exits</span>
         <div className="progress" aria-hidden="true"><i style={{ width: `${(tick / SLIDE_MS) * 100}%` }} /></div>
       </div>
+      <Footer />
     </div>
   );
 }

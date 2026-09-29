@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/Auth.jsx';
 import { Icon } from '../components/Icons.jsx';
+import { Crest, Footer, YearsMark, PRODUCT } from '../components/Brand.jsx';
 import { Blobs } from '../components/Decor.jsx';
 import { DEMO_PASSWORD, isLiveMode } from '../api/index.js';
 
@@ -39,11 +40,12 @@ export default function Login() {
       <div className="bezel">
         <div className="glass">
           <Blobs />
+          <YearsMark height={64} />
           <div className="scroll bare" style={{ padding: 0 }}>
             <div className="login-wrap">
               <div className="login">
-                <Icon name="cap" className="cap" strokeWidth="1.6" />
-                <h1>ACADEMIC <em>CODING BOARD</em></h1>
+                <Crest height={118} className="login-crest" />
+                <h1>RMK <em>CODING BOARD</em></h1>
                 <p className="tag">Student Coding Performance Management</p>
                 <form className="card" onSubmit={submit} noValidate>
                   {error && <div className="alert" role="alert"><Icon name="alert" /><span>{error}</span></div>}
@@ -71,6 +73,7 @@ export default function Login() {
               </div>
             </div>
           </div>
+          <Footer floating />
         </div>
       </div>
       <div className="tray" aria-hidden="true"><span className="pen blue" /><span className="pen red" /><span className="pen white" /></div>

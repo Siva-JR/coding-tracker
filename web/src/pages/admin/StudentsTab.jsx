@@ -5,6 +5,7 @@ import { useScope } from '../../context/Scope.jsx';
 import { useToast } from '../../components/Toasts.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { parseProfileUrl } from '../../lib/profileUrl.js';
+import { checkGithubUrl, githubHandle } from '../../lib/github.js';
 import { shortDate } from '../../lib/format.js';
 import { ErrorBox, Modal, platformName } from './shared.jsx';
 
@@ -44,7 +45,7 @@ export default function StudentsTab() {
 
   const openEdit = (s) => {
     setSaveError(null);
-    setEditing({ original: s, form: { name: s.name, rollNo: s.rollNo, deptId: String(s.deptId), batchYear: String(s.batchYear), leetcodeUrl: urlOf(s, 'leetcode'), hackerrankUrl: urlOf(s, 'hackerrank') } });
+    setEditing({ original: s, form: { name: s.name, rollNo: s.rollNo, deptId: String(s.deptId), batchYear: String(s.batchYear), leetcodeUrl: urlOf(s, 'leetcode'), hackerrankUrl: urlOf(s, 'hackerrank'), githubUrl: s.githubUrl || '' } });
   };
 
   const save = async () => {
@@ -60,6 +61,12 @@ export default function StudentsTab() {
       if (now === before) continue;
       if (now && parseProfileUrl(platform, now).error) { setSaveError([`${platformName(platform)}: ${parseProfileUrl(platform, now).error}`]); return; }
       patch[key] = now; // an empty string removes the profile
+    }
+    const gh = f.githubUrl.trim();
+    if (gh !== (o.githubUrl || '')) {
+      const bad = checkGithubUrl(gh);
+      if (bad) { setSaveError([`GitHub: ${bad}`]); return; }
+      patch.githubUrl = gh; // an empty string removes the link
     }
     if (!Object.keys(patch).length) { setEditing(null); return; }
     setBusy('save'); setSaveError(null);
@@ -100,14 +107,14 @@ export default function StudentsTab() {
           </select>
           <div className="input-wrap" style={{ width: 240 }}>
             <Icon name="search" />
-            <input className="input" style={{ height: 40 }} placeholder="Search name or roll no" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search students" />
+            <input className="input" style={{ height: 40 }} placeholder="Search name or reg no" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search students" />
           </div>
         </div>
       </div>
       {error && <ErrorBox err={error} style={{ marginBottom: 10 }} />}
       <div className="table-wrap" style={{ opacity: loading && data ? 0.55 : 1 }}>
         <table className="t">
-          <thead><tr><th>Student</th><th>Dept</th><th>Year</th><th>LeetCode</th><th>HackerRank</th><th /></tr></thead>
+          <thead><tr><th>Student</th><th>Dept</th><th>Year</th><th>LeetCode</th><th>HackerRank</th><th>GitHub</th><th /></tr></thead>
           <tbody>
             {data?.items.map((s) => (
               <tr key={s.id}>
@@ -116,6 +123,7 @@ export default function StudentsTab() {
                 <td>{s.yearOfStudy}</td>
                 <td><AccountCell account={s.accounts.find((a) => a.platform === 'leetcode')} /></td>
                 <td><AccountCell account={s.accounts.find((a) => a.platform === 'hackerrank')} /></td>
+                <td>{s.githubUrl ? <a href={s.githubUrl} target="_blank" rel="noreferrer noopener" style={{ fontWeight: 600 }}>{githubHandle(s.githubUrl) || 'link'}</a> : <span className="hint">—</span>}</td>
                 <td className="r" style={{ whiteSpace: 'nowrap' }}>
                   <button className="icon-btn" onClick={() => refresh(s)} disabled={busy === s.id} aria-label={`Refresh ${s.name} now`} title="Fetch the latest numbers now"><Icon name="refresh" /></button>
                   <button className="icon-btn" onClick={() => openEdit(s)} aria-label={`Edit ${s.name}`}><Icon name="edit" /></button>
@@ -139,13 +147,14 @@ export default function StudentsTab() {
           <ErrorBox err={saveError} style={{ marginTop: 10 }} />
           <div className="form-grid" style={{ marginTop: 14 }}>
             <div className="field"><label htmlFor="e-n">Name</label><input id="e-n" className="input" value={editing.form.name} onChange={set('name')} /></div>
-            <div className="field"><label htmlFor="e-r">Roll number</label><input id="e-r" className="input" value={editing.form.rollNo} onChange={set('rollNo')} /></div>
+            <div className="field"><label htmlFor="e-r">Reg no</label><input id="e-r" className="input" value={editing.form.rollNo} onChange={set('rollNo')} /></div>
             <div className="field"><label htmlFor="e-d">Department</label>
               <select id="e-d" className="input" value={editing.form.deptId} onChange={set('deptId')}>{departments.map((d) => <option key={d.id} value={d.id}>{d.code}</option>)}</select></div>
             <div className="field"><label htmlFor="e-b">Batch</label><input id="e-b" className="input" inputMode="numeric" value={editing.form.batchYear} onChange={set('batchYear')} /></div>
             <div className="field full"><label htmlFor="e-l">LeetCode URL</label><input id="e-l" className="input" value={editing.form.leetcodeUrl} onChange={set('leetcodeUrl')} placeholder="(none)" /></div>
             <div className="field full"><label htmlFor="e-h">HackerRank URL</label><input id="e-h" className="input" value={editing.form.hackerrankUrl} onChange={set('hackerrankUrl')} placeholder="(none)" />
               <span className="hint">Changing a URL re-checks the profile and clears the old profile’s history. Empty removes it (a student keeps at least one).</span></div>
+            <div className="field full"><label htmlFor="e-g">GitHub URL</label><input id="e-g" className="input" value={editing.form.githubUrl} onChange={set('githubUrl')} placeholder="(none)" /></div>
           </div>
         </Modal>
       )}

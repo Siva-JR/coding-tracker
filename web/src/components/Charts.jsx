@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
-export const COLORS = { leetcode: '#2b6cdf', hackerrank: '#0f8f72' };
+export const COLORS = { leetcode: '#2b6cdf', hackerrank: '#b45309' };
 
 export function Sparkline({ data, color = COLORS.leetcode }) {
   const id = useId().replace(/:/g, '');
@@ -98,30 +98,37 @@ export function LineChart({ data, series, formatX, height = 260, yLabel }) {
         </defs>
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="#dbe4f0" strokeDasharray={t === 0 ? '' : '3 5'} />
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="#d9e7de" strokeDasharray={t === 0 ? '' : '3 5'} />
             <text x={L - 8} y={y(t) + 4} textAnchor="end">{Math.round(t)}</text>
           </g>
         ))}
         {data.map((d, i) => ((i % labelEvery === 0 && data.length - 1 - i >= labelEvery * 0.6) || i === data.length - 1) && (
           <text key={i} x={x(i)} y={H - 8} textAnchor="middle">{formatX ? formatX(d.date) : d.date}</text>
         ))}
-        {series.map((s) => (
-          <g key={s.key}>
-            <path d={`${path(s.key)} L${x(data.length - 1)} ${y(0)} L${x(0)} ${y(0)} Z`} fill={`url(#${uid}${s.key})`} />
-            <path d={path(s.key)} fill="none" stroke={s.color} strokeWidth="3" strokeDasharray={s.dash ? '7 5' : ''} strokeLinecap="round" strokeLinejoin="round" />
-            {data.map((d, i) => d[s.key] != null && (i === data.length - 1 || hover === i) && (
-              <circle key={i} cx={x(i)} cy={y(d[s.key])} r="5" fill="#fff" stroke={s.color} strokeWidth="3" />
-            ))}
-          </g>
-        ))}
-        {hover != null && <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke="#8aa0c4" strokeDasharray="3 4" />}
+        {series.map((s) => {
+          const idx = data.map((d, i) => (d[s.key] != null ? i : -1)).filter((i) => i >= 0);
+          if (!idx.length) return null; // a platform with no data (for example no HackerRank profile) draws nothing
+          const first = idx[0];
+          const last = idx[idx.length - 1];
+          return (
+            <g key={s.key}>
+              {/* An area needs two points; a single day of data is drawn as a dot only. */}
+              {idx.length > 1 && <path d={`${path(s.key)} L${x(last)} ${y(0)} L${x(first)} ${y(0)} Z`} fill={`url(#${uid}${s.key})`} />}
+              {idx.length > 1 && <path d={path(s.key)} fill="none" stroke={s.color} strokeWidth="3" strokeDasharray={s.dash ? '7 5' : ''} strokeLinecap="round" strokeLinejoin="round" />}
+              {data.map((d, i) => d[s.key] != null && (i === last || hover === i) && (
+                <circle key={i} cx={x(i)} cy={y(d[s.key])} r="5" fill="#fff" stroke={s.color} strokeWidth="3" />
+              ))}
+            </g>
+          );
+        })}
+        {hover != null && <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke="#8fa89a" strokeDasharray="3 4" />}
         {yLabel && <text x={L} y={T - 2} textAnchor="start" style={{ fontSize: 11 }}>{yLabel}</text>}
       </svg>
       {hv && (
         <div className="tooltip" style={{ left: `${(x(hover) / W) * 100}%`, top: `${(Math.min(...series.map((s) => (hv[s.key] != null ? y(hv[s.key]) : H))) / H) * 100}%` }}>
           <b>{formatX ? formatX(hv.date) : hv.date}</b>
           {series.map((s) => hv[s.key] != null && (
-            <div key={s.key}><span style={{ color: s.color === COLORS.leetcode ? '#9cc0ff' : '#6fe0c0' }}>●</span> {s.label}: {hv[s.key]}</div>
+            <div key={s.key}><span style={{ color: s.color === COLORS.leetcode ? '#9cc0ff' : '#f5b471' }}>●</span> {s.label}: {hv[s.key]}</div>
           ))}
         </div>
       )}
