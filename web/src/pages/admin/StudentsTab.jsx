@@ -136,7 +136,7 @@ export default function StudentsTab() {
           </tbody>
         </table>
         {loading && !data && <div className="skeleton" style={{ height: 240 }} />}
-        {data && data.items.length === 0 && <div className="empty"><span className="hand">No students</span>{dq ? `Nothing matches “${dq}”.` : 'Add one or import a CSV.'}</div>}
+        {data && data.items.length === 0 && <div className="empty"><span className="hand">No students</span>{dq ? `Nothing matches “${dq}”.` : 'Add one or import an Excel file.'}</div>}
       </div>
       <div className="controls" style={{ marginTop: 12, marginBottom: 0 }}>
         <span className="hint">Page {page} of {pages}</span><div className="spacer" />

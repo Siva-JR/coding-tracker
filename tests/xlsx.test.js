@@ -6,10 +6,12 @@ let fflate;
 let readWorkbook;
 let studentsFromSheet;
 let applyDefaults;
+let writer;
 try {
   fflate = await import('../web/node_modules/fflate/esm/browser.js');
   ({ readWorkbook } = await import('../web/src/lib/xlsx.js'));
   ({ studentsFromSheet, applyDefaults } = await import('../web/src/lib/sheet.js'));
+  writer = await import('../web/src/lib/xlsxWrite.js');
 } catch {
   fflate = null;
 }
@@ -162,4 +164,31 @@ test('namespace-prefixed XML (some exporters) and a sheet without student column
 test('files that are not workbooks give a plain message', { skip }, () => {
   assert.throws(() => readWorkbook(enc('name,reg_no\nA,1\n')), /does not look like an .xlsx/);
   assert.throws(() => readWorkbook(new Uint8Array([0x50, 0x4b, 1, 2, 3, 4])), /Could not open/);
+});
+
+test('the workbooks the app writes (template and the needing-attention list) read back, links intact', { skip }, () => {
+  // The template is a valid, empty student sheet.
+  const template = readWorkbook(writer.templateWorkbook());
+  const empty = studentsFromSheet(template[0].rows);
+  assert.equal(empty.error, undefined);
+  assert.equal(empty.rows.length, 0);
+  assert.deepEqual(Object.keys(empty.columns).sort(), ['batchYear', 'deptCode', 'hackerrankUrl', 'leetcodeUrl', 'name', 'rollNo', 'githubUrl'].sort());
+
+  // A list written for fixing keeps clickable links, special characters, and can be uploaded again.
+  const bytes = writer.problemsWorkbook([
+    ['Asha & Co <IT>', '111725203001', 'IT', '2029', 'https://leetcode.com/u/asha1', 'https://www.hackerrank.com/profile/asha_h', 'https://github.com/asha', 'LeetCode: no username'],
+    ['Bala', '111725203002', 'IT', '2029', '', 'https://www.hackerrank.com/profile/bala_h', '', 'LeetCode: no link in the sheet'],
+  ]);
+  const res = studentsFromSheet(readWorkbook(bytes)[0].rows);
+  assert.equal(res.rows.length, 2);
+  assert.deepEqual(
+    res.rows.map((r) => [r.name, r.rollNo, r.leetcodeUrl, r.hackerrankUrl, r.githubUrl]),
+    [
+      ['Asha & Co <IT>', '111725203001', 'https://leetcode.com/u/asha1', 'https://www.hackerrank.com/profile/asha_h', 'https://github.com/asha'],
+      ['Bala', '111725203002', '', 'https://www.hackerrank.com/profile/bala_h', ''],
+    ],
+  );
+  // They are real hyperlinks in the file, not just text
+  const cells = readWorkbook(bytes)[0].rows;
+  assert.deepEqual(cells[1][4].links, ['https://leetcode.com/u/asha1']);
 });

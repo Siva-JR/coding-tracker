@@ -92,7 +92,12 @@ export default function RefreshAll({ onDone }) {
               {!loading && !targets.length && <span className="hint">Nothing to refresh here.</span>}
             </div>
           )}
-          {tally && <div style={{ marginTop: 12 }}><ScrapeProgress tally={tally} label="Refreshing" finished={finished} /></div>}
+          {tally && (
+            <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+              <ScrapeProgress tally={tally} label="Refreshing" finished={finished} />
+              {finished && tally.notFound > 0 && <span className="hint">Profiles that were not found are listed under Needs attention so the link can be corrected.</span>}
+            </div>
+          )}
         </Modal>
       )}
     </>

@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/Auth.jsx';
 import { Scribble } from '../components/Decor.jsx';
 import AddStudent from './admin/AddStudent.jsx';
-import ImportCsv from './admin/ImportCsv.jsx';
+import ImportStudents from './admin/ImportStudents.jsx';
 import StudentsTab from './admin/StudentsTab.jsx';
 import UsersTab from './admin/UsersTab.jsx';
 import DepartmentsTab from './admin/DepartmentsTab.jsx';
@@ -29,7 +29,7 @@ export default function Admin() {
         </div>
       </div>
       {tab === 'add' && <AddStudent />}
-      {tab === 'import' && <ImportCsv />}
+      {tab === 'import' && <ImportStudents />}
       {tab === 'students' && <StudentsTab />}
       {tab === 'users' && <UsersTab />}
       {tab === 'departments' && <DepartmentsTab />}

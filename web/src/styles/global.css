@@ -391,3 +391,5 @@ table.t { width: 100%; border-collapse: collapse; font-size: 15px; }
 
 .radio-row { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
 .radio-row input { margin-top: 4px; accent-color: var(--accent); }
+
+.t tbody tr.row-problem td { background: rgba(252, 230, 230, 0.45); }
