@@ -1,0 +1,24 @@
+{
+  "name": "coding-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node --env-file=.env api/server.js",
+    "migrate": "node --env-file=.env scripts/migrate.js",
+    "seed": "node --env-file=.env scripts/seed.js",
+    "scrape:cli": "node scraper/cli.js",
+    "test": "node --test --test-concurrency=1 tests/",
+    "add-student": "node --env-file=.env scripts/add-student.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "embedded-postgres": "^18.4.0-beta.17"
+  }
+}

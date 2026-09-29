@@ -81,13 +81,13 @@ platform_accounts(id, student_id, platform, username,           -- one row per U
                   claimed_until null,                           -- lease so overlapping ticks never take the same row
                   last_scraped_at null, last_ok_at null, last_error null,
                   unique(student_id, platform))
-snapshots(id, student_id, platform, snap_date, status,          -- ok | not_found | error
+snapshots(id, student_id, platform, snap_date,                  -- successful fetches only
           solved_total, solved_easy, solved_medium, solved_hard,
-          global_rank, hr_stars, error_message, scraped_at timestamptz,
+          global_rank, hr_stars, scraped_at timestamptz,
           unique(student_id, platform, snap_date))
 index snapshots(student_id, platform, snap_date desc)
 ```
-Leaderboard query uses the latest `status='ok'` snapshot per student and platform (`DISTINCT ON (student_id)`), so a failed night never blanks a student.
+Snapshots hold successful fetches only; failures are tracked on `platform_accounts` (`attempts`, `last_error`, `state`), so a bad scrape can never overwrite a good snapshot for the same day. The leaderboard uses each student's latest snapshot (`DISTINCT ON (student_id)`) and skips accounts marked `broken`, so a failed night never blanks a student.
 
 ## 5. Scraper module (`/scraper`, shared by API validation and cron)
 - `leetcode.fetch(username)` → GraphQL `matchedUser { profile.ranking, submitStatsGlobal.acSubmissionNum }`; `matchedUser == null` → `not_found`.
@@ -101,7 +101,7 @@ Each `platform_accounts` row is one independent unit of work. The queue is a dat
 
 **Schedule.** Two windows a day, **00:00–03:00 IST** and **18:00–21:00 IST**. Catalyst Cron calls `POST /internal/scrape/tick` every minute or two inside each window. Outside a window the endpoint returns immediately. Confirm Catalyst cron timezone support and minimum interval before deployment.
 
-**One tick** (hard budget ~20 s so the response is sent well inside the 30 s AppSail limit):
+**One tick** (hard 22 s deadline: a fetch only starts if it can finish inside the budget, with a 7 s per-fetch timeout and no in-fetch retries, so the response stays inside the 30 s AppSail limit):
 1. Two lanes run in parallel, one for LeetCode and one for HackerRank (different hosts).
 2. Each lane repeatedly **claims one due account** and scrapes it, with a 2–4 s random pause between fetches, until the budget is spent (about 4 URLs per lane per tick).
 3. "Due" means: `state='active'`, `last_scraped_at` older than the start of the current window, `next_retry_at` empty or in the past, and `claimed_until` empty or expired.
@@ -111,7 +111,7 @@ Each `platform_accounts` row is one independent unit of work. The queue is a dat
 **Per-URL outcomes:**
 - `ok` → upsert the snapshot for `(student, platform, snap_date)`, set `last_ok_at`, reset `attempts`.
 - `not_found` (profile missing or renamed) → set `state='broken'`, no retries; it shows in the "needs attention" list until an admin fixes the URL.
-- Transient failure (timeout, 429, 5xx) → `attempts++`, `next_retry_at = now + 10 min × 2^attempts`; after 3 attempts it stops for this window and is tried again in the next window. The last good snapshot stays on the leaderboard.
+- Transient failure (timeout, 429, 5xx) → `attempts++`, `next_retry_at` = now + 10 min, then 20 min, then 40 min; after 3 attempts it stops for this window and is tried again in the next window. The last good snapshot stays on the leaderboard.
 
 **Both windows** update the same `(student, platform, snap_date)` row, so the latest scrape of the day wins. Daily gain = today's final count minus the previous day's final count.
 
