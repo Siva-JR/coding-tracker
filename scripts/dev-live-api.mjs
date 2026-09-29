@@ -5,6 +5,7 @@
 // set FAKE_SCRAPER=1: numbers are then made up from the username and are NOT real.
 //
 //   npm run dev:api          then, in web/:  VITE_API_URL=/backend npm run dev
+//   NO_DEMO_STUDENTS=1 npm run dev:api   starts with no students, so you only see what you add
 //   Sign in as admin / principal / vice.chairman / hod.it  with password  demo12345
 import { startTestDb } from '../tests/helpers/testdb.js';
 import { createApp } from '../api/app.js';
@@ -35,7 +36,8 @@ const fakeFetchProfile = async (platform, username) => {
 const seedFetch = fakeFetchProfile; // seeded demo students always use made-up numbers
 const names = ['Arun Kumar', 'Priya S', 'Karthik R', 'Divya K', 'Rahul M', 'Sneha V', 'Vikram P', 'Ananya N', 'Surya G', 'Meera D', 'Naveen T', 'Kavya B'];
 const { rows: depts } = await db.query('select id from departments order by id');
-for (const [i, n] of names.entries()) {
+// NO_DEMO_STUDENTS=1 starts with an empty roster (only the staff accounts), so every number on screen is real.
+for (const [i, n] of (process.env.NO_DEMO_STUDENTS ? [] : names).entries()) {
   const first = n.split(' ')[0].toLowerCase();
   const { rows: [s] } = await db.query(
     'insert into students (roll_no, name, dept_id, batch_year) values ($1, $2, $3, $4) returning id',

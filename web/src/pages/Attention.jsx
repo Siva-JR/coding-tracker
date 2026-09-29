@@ -43,11 +43,13 @@ export default function Attention() {
         <p className="hint" style={{ marginBottom: 8 }}>
           {tab === 'broken' && 'The profile was not found or the latest fetch failed. These students are excluded from that platform’s leaderboard until fixed.'}
           {tab === 'stale' && 'Fetches succeeded before, but nothing new has come through for 3 or more days. Old numbers are still shown.'}
-          {tab === 'inactive' && 'No new problems on either platform in the last 30 days.'}
+          {tab === 'inactive' && (data && data.inactiveAvailable === false
+            ? 'Needs 30 days of history before anyone can be called inactive. It will fill in as nightly snapshots build up.'
+            : 'No new problems on either platform in the last 30 days.')}
         </p>
         {error && <div className="alert" role="alert"><Icon name="alert" /> Couldn't load this list.</div>}
         {loading && !data && <div className="skeleton" style={{ height: 200 }} />}
-        {data && rows.length === 0 && <div className="empty"><span className="hand">All clear</span>Nobody in this list.</div>}
+        {data && rows.length === 0 && <div className="empty"><span className="hand">{tab === 'inactive' && data.inactiveAvailable === false ? 'Not enough history yet' : 'All clear'}</span>{tab === 'inactive' && data.inactiveAvailable === false ? 'Check back after a month of nightly snapshots.' : 'Nobody in this list.'}</div>}
         {data && rows.length > 0 && (
           <div className="table-wrap">
             <table className="t">

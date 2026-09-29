@@ -33,3 +33,10 @@ export function grantsParam(access) {
 export function canSeeDepartment(access, deptId) {
   return access.unrestricted || access.grants.some((g) => g.deptId === null || g.deptId === deptId);
 }
+
+// Does any single grant cover this student? Used to hide students outside a viewer's scopes.
+export function coversStudent(access, { deptId, batchYear }) {
+  return access.unrestricted || access.grants.some(
+    (g) => (g.deptId === null || g.deptId === deptId) && (g.batchYear === null || g.batchYear === batchYear),
+  );
+}

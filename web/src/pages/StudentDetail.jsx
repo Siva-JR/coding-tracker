@@ -14,6 +14,17 @@ function statusChip(st, lastOk) {
 
 function Platform({ kind, p, username }) {
   const lc = kind === 'leetcode';
+  if (!p) {
+    return (
+      <section className="card" aria-label={lc ? 'LeetCode' : 'HackerRank'}>
+        <div className="plat-head">
+          <span className="plat-badge" style={{ background: COLORS[kind], opacity: 0.45 }}>{lc ? 'LC' : 'H'}</span>
+          <div><h2 style={{ fontSize: 18 }}>{lc ? 'LeetCode' : 'HackerRank'}</h2><span className="hint">not linked</span></div>
+        </div>
+        <div className="empty" style={{ padding: '10px 0' }}>No {lc ? 'LeetCode' : 'HackerRank'} profile was added for this student.</div>
+      </section>
+    );
+  }
   const has = p.total != null;
   return (
     <section className="card" aria-label={lc ? 'LeetCode' : 'HackerRank'}>
@@ -21,7 +32,7 @@ function Platform({ kind, p, username }) {
         <span className="plat-badge" style={{ background: COLORS[kind] }}>{lc ? 'LC' : 'H'}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={{ fontSize: 18 }}>{lc ? 'LeetCode' : 'HackerRank'}</h2>
-          <span className="hint">@{username}</span>
+          <span className="hint">@{p.username || username}</span>
         </div>
         {p.url && <a className="link-btn" href={p.url} target="_blank" rel="noreferrer noopener">Open <Icon name="external" /></a>}
       </div>
@@ -39,10 +50,10 @@ function Platform({ kind, p, username }) {
             ) : (
               <div><b className="num">{p.stars ? `${p.stars} ★` : '—'}</b><span>Problem Solving stars</span></div>
             )}
-            <div><b className="num">+{p.weekGain}</b><span>Last 7 days</span></div>
+            <div><b className="num">{p.weekGain == null ? '–' : `+${p.weekGain}`}</b><span>Last 7 days</span></div>
           </div>
         </>
-      ) : <div className="empty" style={{ padding: '10px 0' }}><span className="hand">No data</span>{p.lastError}</div>}
+      ) : <div className="empty" style={{ padding: '10px 0' }}><span className="hand">{p.status === 'ok' ? 'Waiting for the first scrape' : 'No data'}</span>{p.lastError}</div>}
       <div className="meta">{statusChip(p.status, p.lastOk)}</div>
     </section>
   );
@@ -76,12 +87,13 @@ export default function StudentDetail() {
           </div>
           <section className="card" aria-labelledby="trend">
             <div className="card-head">
-              <h2 id="trend"><Icon name="trend" /> Trend since {shortDate(s.firstSnapshot)}</h2>
+              <h2 id="trend"><Icon name="trend" /> Trend {s.firstSnapshot ? `since ${shortDate(s.firstSnapshot)}` : ''}</h2>
               <div className="legend">
                 <span><i style={{ borderColor: COLORS.leetcode }} />LeetCode</span>
                 <span><i className="dash" style={{ borderColor: COLORS.hackerrank }} />HackerRank</span>
               </div>
             </div>
+            {s.history.length < 2 && <p className="hint" style={{ marginBottom: 8 }}>Only one day of data so far; the trend fills in as nightly snapshots build up.</p>}
             <LineChart
               data={s.history}
               formatX={shortDate}

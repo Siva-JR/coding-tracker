@@ -14,9 +14,14 @@ export const leaderboard = (q) => get('/api/leaderboard', {
   platform: q.platform, sort: q.sort, year: q.year, deptId: q.deptId, limit: q.limit,
 }).then((data) => ({
   ...data,
-  count: data.entries.length,
-  entries: data.entries.map((e) => ({ weekGain: null, stale: false, ...e })),
+  count: data.total ?? data.entries.length,
 }));
+
+export const stats = (q) => get('/api/stats', { deptId: q?.deptId });
+export const activity = (q) => get('/api/activity', { deptId: q?.deptId, limit: q?.limit });
+export const attention = (q) => get('/api/attention', { deptId: q?.deptId });
+export const departmentOverview = () => get('/api/departments/overview');
+export const student = (id) => get(`/api/students/${id}`);
 
 export const admin = {
   users: () => get('/api/admin/users'),

@@ -25,6 +25,17 @@ function Kpi({ tone, icon, label, value, note, spark, color, loading }) {
 }
 
 function Health({ label, badge, color, h }) {
+  if (!h.total) {
+    return (
+      <div className="health-row">
+        <span className="health-ic" style={{ background: color, opacity: 0.45 }} aria-hidden="true">{badge}</span>
+        <div className="health-body">
+          <div className="health-line"><span>{label}</span><span className="hint">none linked</span></div>
+          <div className="bar"><i style={{ width: 0 }} /></div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="health-row">
       <span className="health-ic" style={{ background: color }} aria-hidden="true">{badge}</span>
@@ -56,6 +67,8 @@ export default function Dashboard() {
   const dept = depts.data?.find((d) => d.id === deptId);
 
   const s = stats.data;
+  const days = s?.historyDays ?? 99; // sample data has plenty of history
+  const historyNote = days < 1 ? 'needs 2+ days of data' : days < 7 ? `over ${days} day${days === 1 ? '' : 's'} tracked` : null;
   const scopeName = dept ? dept.name : 'All departments';
 
   return (
@@ -76,10 +89,10 @@ export default function Dashboard() {
 
       <div style={{ marginBottom: 8 }}><SampleBadge feature="stats" /></div>
       <div className="grid kpis">
-        <Kpi tone="blue" icon="users" label="Total students" value={s?.kpis.totalStudents.value} loading={stats.loading && !s} note={`${s?.needsAttention ?? 0} profiles need attention`} />
-        <Kpi tone="teal" icon="user" label="Active this week" value={s?.kpis.activeStudents.value} spark={s?.kpis.activeStudents.spark} color="#0f8f72" loading={stats.loading && !s} note="solved something in 7 days" />
+        <Kpi tone="blue" icon="users" label="Total students" value={s?.kpis.totalStudents.value} loading={stats.loading && !s} note={`${s?.needsAttention ?? 0} need${s?.needsAttention === 1 ? 's' : ''} attention`} />
+        <Kpi tone="teal" icon="user" label="Active this week" value={s?.kpis.activeStudents.value} spark={s?.kpis.activeStudents.spark} color="#0f8f72" loading={stats.loading && !s} note={historyNote || 'solved something in 7 days'} />
         <Kpi tone="violet" icon="code" label="Avg. LeetCode solved" value={s?.kpis.avgSolved.value} spark={s?.kpis.avgSolved.spark} color="#6d4fd6" loading={stats.loading && !s} note="per student" />
-        <Kpi tone="amber" icon="trend" label="Solved this week" value={s?.kpis.weekSolved.value} spark={s?.kpis.weekSolved.spark} color="#b86e00" loading={stats.loading && !s} note="both platforms" />
+        <Kpi tone="amber" icon="trend" label="Solved this week" value={s?.kpis.weekSolved.value} spark={s?.kpis.weekSolved.spark} color="#b86e00" loading={stats.loading && !s} note={historyNote || 'both platforms'} />
       </div>
 
       <div className="grid main-grid">
@@ -134,7 +147,10 @@ export default function Dashboard() {
             <span><i className="dash" style={{ borderColor: COLORS.hackerrank }} />HackerRank</span>
           </div>
         </div>
-        <p className="hint" style={{ marginBottom: 8 }}>Average problems solved per student, weekly.</p>
+        <p className="hint" style={{ marginBottom: 8 }}>
+          Average problems solved per student, weekly.
+          {s && s.timeline.length < 2 && ' Only one day of data so far; the chart fills in as nightly snapshots build up.'}
+        </p>
         {s ? (
           <LineChart
             data={s.timeline}
