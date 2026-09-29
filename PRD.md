@@ -46,23 +46,25 @@ Rules:
 - Both are **unofficial and can change without notice**. LeetCode's ToS prohibits scraping; keep request rate low (2–4 s gaps), and on failure keep last good data and mark the student stale instead of blanking the dashboard.
 - Verified working on 2026-09-24 against live public profiles.
 
-### Nightly job design (constraint: Catalyst cron function = 15 min max per run)
-- Cron fires every ~15 min between 01:00 and 05:00 IST.
-- Each run picks students without today's snapshot, processes as many as fit in ~12 minutes, then exits. Idempotent: a killed or failed run just resumes next tick.
-- Capacity: ~12 min ÷ ~3 s ≈ 240 profile fetches per run × ~16 runs ≈ thousands per night. Fine for the expected roster.
-- Per-student try/catch; errors recorded in `last_error`, never abort the run.
+### Scheduled scrape design (constraint: AppSail requests must finish in 30 s)
+- Two scrape windows a day: **00:00–03:00 IST** and **18:00–21:00 IST**. A Catalyst Cron calls a protected backend endpoint every minute or two inside each window.
+- Each profile URL is an independent unit of work. A tick claims a few due URLs (about 4 per platform), scrapes them one at a time with 2–4 s pauses, and returns within ~20 s. A killed or failed tick just resumes next tick. Both windows update the same day's row, so the latest scrape wins.
+- Failures are per URL: a missing profile is marked broken (shown to the HOD/admin for fixing); temporary errors retry with backoff and the last good data stays visible.
+- Capacity: roughly 700 students per platform fit in one 3-hour window.
+- Risk to verify first: Catalyst's IP addresses may be blocked by LeetCode. A small network test runs before any other backend work; fallback is to run the scraper from a college machine or a scheduled GitHub Actions job.
 
 ## 6. Architecture
 - Frontend: React + Vite SPA on Catalyst Web Client Hosting.
-- Backend: Node/Express as a Catalyst Advanced I/O function (30 s limit per request — fine for API calls; CSV import validates rows in batches from the client to stay under it).
-- Cron: Catalyst Cron Function running the scraper.
+- Backend: Node/Express on Catalyst AppSail (30 s limit per request; CSV import validates rows in batches from the client to stay under it).
+- Scheduling: Catalyst Cron triggers the scrape endpoint on the backend (see Scheduled scrape design).
 - DB: Neon Postgres (free tier: 0.5 GB, 100 CU-hours/month, scale-to-zero).
 - Auth: bcrypt password hashes, httpOnly signed session cookie, role middleware on every route.
 
 ## 7. Data model
 - `departments` (id, name, code)
 - `staff` (id, username, password_hash, role, dept_id nullable, display_title)
-- `students` (id, roll_no unique, name, dept_id, batch_year, leetcode_username, hackerrank_username, created_at)
+- `students` (id, roll_no unique, name, dept_id, batch_year, created_at)
+- `platform_accounts` (student_id, platform, username, state active/broken, attempts, next_retry_at, last_scraped_at, last_ok_at, last_error) — one row per profile URL, doubles as the scrape queue
 - `snapshots` (student_id, platform, date, solved_total, solved_easy, solved_medium, solved_hard, ranking, hr_stars, hr_score, status, error) — unique (student_id, platform, date)
 - Year of study is **derived** from `batch_year` and today's date (never stored, so it doesn't go stale each June).
 - Estimated growth: ~1 KB per snapshot row, 2 rows per student per night. 500 students ≈ 0.35 GB/year; 1,000 students ≈ 0.7 GB/year, which exceeds the free 0.5 GB in ~8 months.
