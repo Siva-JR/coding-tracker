@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startTestDb } from './helpers/testdb.js';
+import { readFile } from 'node:fs/promises';
 import { migrate } from '../api/migrate.js';
 
 let t;
@@ -18,13 +19,27 @@ test('roll numbers are unique', async () => {
   await assert.rejects(insert, /duplicate key/);
 });
 
-test('hod staff must have a department; other roles must not', async () => {
-  const add = (role, deptId) => t.db.query("insert into staff (username, password_hash, role, dept_id) values ($1, 'x', $2, $3)", [`u-${role}-${deptId}`, role, deptId]);
-  await assert.rejects(() => add('hod', null), /check constraint/);
-  await assert.rejects(() => add('admin', 1), /check constraint/);
-  const { rows: [dept] } = await t.db.query("select id from departments limit 1");
-  await add('hod', dept.id);
-  await add('admin', null);
+test('staff roles are limited to admin and viewer', async () => {
+  const add = (role) => t.db.query("insert into staff (username, password_hash, role) values ($1, 'x', $2)", [`u-${role}`, role]);
+  await assert.rejects(() => add('hod'), /check constraint/);
+  await add('admin');
+  await add('viewer');
+});
+
+test('usernames must be lowercase', async () => {
+  await assert.rejects(() => t.db.query("insert into staff (username, password_hash, role) values ('MixedCase', 'x', 'viewer')"), /check constraint/);
+});
+
+test('a scope row cannot be duplicated, including all-departments rows', async () => {
+  const { rows: [s] } = await t.db.query("select id from staff where username = 'u-viewer'");
+  const { rows: [d] } = await t.db.query('select id from departments limit 1');
+  const add = (dept, year) => t.db.query('insert into staff_scopes (staff_id, dept_id, year) values ($1, $2, $3)', [s.id, dept, year]);
+  await add(d.id, null);
+  await add(d.id, 2);
+  await add(null, null);
+  await assert.rejects(() => add(d.id, null), /duplicate key/);
+  await assert.rejects(() => add(null, null), /duplicate key/);
+  await assert.rejects(() => add(d.id, 5), /check constraint/);
 });
 
 test('one snapshot per student, platform and day', async () => {
@@ -32,4 +47,11 @@ test('one snapshot per student, platform and day', async () => {
   const insert = () => t.db.query("insert into snapshots (student_id, platform, snap_date, solved_total) values ($1, 'leetcode', '2026-09-30', 10)", [s.id]);
   await insert();
   await assert.rejects(insert, /duplicate key/);
+});
+
+test('migration 002 refuses to run over existing staff accounts instead of deleting them', async () => {
+  const sql = await readFile(new URL('../migrations/002_staff_scopes.sql', import.meta.url), 'utf8');
+  await t.db.query("insert into staff (username, password_hash, role) values ('keepme', 'x', 'admin')");
+  await assert.rejects(() => t.db.query(sql), /would delete existing accounts/);
+  assert.equal((await t.db.query("select count(*)::int as n from staff where username = 'keepme'")).rows[0].n, 1);
 });

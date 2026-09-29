@@ -49,7 +49,7 @@ export function recordSuccess(db, account, data, { now }) {
     );
     await client.query(
       `update platform_accounts
-       set last_ok_at = $2, last_scraped_at = $2, attempts = 0, next_retry_at = null, last_error = null, claimed_until = null
+       set state = 'active', last_ok_at = $2, last_scraped_at = $2, attempts = 0, next_retry_at = null, last_error = null, claimed_until = null
        where id = $1`,
       [account.id, now],
     );
