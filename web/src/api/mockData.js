@@ -140,19 +140,24 @@ export function generateStudents() {
   return students;
 }
 
+const scopeFor = (deptId, year = null) => {
+  const d = deptId ? DEPARTMENTS.find((x) => x.id === deptId) : null;
+  return { deptId: d ? d.id : null, deptCode: d ? d.code : null, deptName: d ? d.name : null, year };
+};
+
+export const DEMO_PASSWORD = 'demo12345';
+
+// Same shape as the backend's user object (BACKEND_PLAN §3): role admin | viewer, plus scopes.
 export const USERS = [
-  { id: 1, username: 'admin', role: 'admin', deptId: null, displayTitle: 'Administrator', password: 'demo123', disabled: false },
-  { id: 2, username: 'principal', role: 'institute', deptId: null, displayTitle: 'Principal', password: 'demo123', disabled: false },
-  { id: 3, username: 'vicechairman', role: 'institute', deptId: null, displayTitle: 'Vice Chairman', password: 'demo123', disabled: false },
+  { id: 1, username: 'admin', role: 'admin', displayTitle: 'Administrator', scopes: [] },
+  { id: 2, username: 'principal', role: 'viewer', displayTitle: 'Principal', scopes: [scopeFor(null)] },
+  { id: 3, username: 'vice.chairman', role: 'viewer', displayTitle: 'Vice Chairman', scopes: [scopeFor(null)] },
   ...DEPARTMENTS.map((d, i) => ({
-    id: 4 + i,
-    username: `hod.${d.code.toLowerCase()}`,
-    role: 'hod',
-    deptId: d.id,
-    displayTitle: `HOD, ${d.code}`,
-    password: 'demo123',
-    disabled: false,
+    id: 4 + i, username: `hod.${d.code.toLowerCase()}`, role: 'viewer', displayTitle: `HOD - ${d.code}`, scopes: [scopeFor(d.id)],
   })),
-];
+  { id: 14, username: 'coord.cse2', role: 'viewer', displayTitle: 'CSE 2nd-year coordinator', scopes: [scopeFor(1, 2)] },
+].map((u) => ({ ...u, password: DEMO_PASSWORD, mustChangePassword: false, disabled: false }));
+
+export const scopeOf = scopeFor;
 
 export const yearOf = (s) => yearOfStudy(s.batchYear);

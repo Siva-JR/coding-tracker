@@ -1,41 +1,38 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, setCurrentUser } from '../api/index.js';
+import { api, onUnauthenticated, setCurrentUser } from '../api/index.js';
 
 const AuthCtx = createContext(null);
-const KEY = 'ct_session';
-
-const readSession = () => {
-  try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; }
-};
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
 
+  const set = useCallback((u) => { setCurrentUser(u); setUser(u); }, []);
+
   useEffect(() => {
-    const s = readSession();
-    if (!s?.id) { setBooting(false); return; }
-    api.me(s.id)
-      .then(({ user: u }) => { setCurrentUser(u); setUser(u); })
-      .catch(() => { try { localStorage.removeItem(KEY); } catch { /* ignore */ } })
-      .finally(() => setBooting(false));
-  }, []);
+    api.auth.me().then(set).catch(() => set(null)).finally(() => setBooting(false));
+  }, [set]);
+
+  // An expired or revoked session anywhere in the app sends the user back to sign-in.
+  useEffect(() => { onUnauthenticated(() => set(null)); }, [set]);
 
   const signIn = useCallback(async (username, password) => {
-    const { user: u } = await api.login(username, password);
-    setCurrentUser(u);
-    try { localStorage.setItem(KEY, JSON.stringify({ id: u.id })); } catch { /* ignore */ }
-    setUser(u);
+    const u = await api.auth.login(username, password);
+    set(u);
     return u;
-  }, []);
+  }, [set]);
 
-  const signOut = useCallback(() => {
-    setCurrentUser(null);
-    try { localStorage.removeItem(KEY); } catch { /* ignore */ }
-    setUser(null);
-  }, []);
+  const signOut = useCallback(async () => {
+    await api.auth.logout();
+    set(null);
+  }, [set]);
 
-  const value = useMemo(() => ({ user, booting, signIn, signOut }), [user, booting, signIn, signOut]);
+  const changePassword = useCallback(async (current, next) => {
+    const u = await api.auth.changePassword(current, next);
+    set(u);
+  }, [set]);
+
+  const value = useMemo(() => ({ user, booting, signIn, signOut, changePassword }), [user, booting, signIn, signOut, changePassword]);
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 

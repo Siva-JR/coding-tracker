@@ -3,8 +3,10 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Icon } from './Icons.jsx';
 import { Blobs } from './Decor.jsx';
 import { useAuth } from '../context/Auth.jsx';
-import { api } from '../api/index.js';
+import { api, isSample } from '../api/index.js';
 import { longDate } from '../lib/format.js';
+import { describeScopes } from '../lib/access.js';
+import { useScope } from '../context/Scope.jsx';
 
 function Tool({ to, icon, label, end, badge }) {
   return (
@@ -38,11 +40,12 @@ export default function Shell() {
   const [pop, setPop] = useState(null); // 'account' | 'sync' | null
   const [attn, setAttn] = useState(0);
   const presenting = pathname === '/present';
-  const isInstitute = user.role !== 'hod';
+  const { multi } = useScope();
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: 0, behavior: 'instant' }); setPop(null); }, [pathname]);
   useEffect(() => {
     api.attention({}).then((a) => setAttn(a.broken.length)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
 
   const enterPresent = () => {
@@ -58,8 +61,8 @@ export default function Shell() {
           {!presenting && (
             <nav className="toolbar left" aria-label="Main">
               <Tool to="/" end icon="home" label="Leaderboard" />
-              {isInstitute && <Tool to="/departments" icon="grid" label="Departments" />}
-              <Tool to="/attention" icon="alert" label="Needs attention" badge={attn} />
+              {multi && <Tool to="/departments" icon="grid" label="Departments" />}
+              <Tool to="/attention" icon="alert" label="Needs attention" badge={isSample('attention') ? 0 : attn} />
               {user.role === 'admin' && (
                 <>
                   <div className="tool-sep" />
@@ -89,10 +92,9 @@ export default function Shell() {
                 <h4>{user.displayTitle}</h4>
                 <p className="sub">
                   @{user.username}
-                  {user.deptName && <><br />{user.deptName}</>}
-                  <br />{user.role === 'admin' ? 'Full access, can manage data' : user.role === 'institute' ? 'All departments, read-only' : 'Own department, read-only'}
+                  <br />{describeScopes(user)}
                 </p>
-                <button className="btn ghost sm" onClick={signOut}><Icon name="logout" /> Sign out</button>
+                <button className="btn ghost sm" onClick={() => signOut()}><Icon name="logout" /> Sign out</button>
               </Popover>
             </div>
           )}

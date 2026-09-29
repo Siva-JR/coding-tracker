@@ -1,44 +1,40 @@
-// In-memory implementation of the API contract (BACKEND_PLAN §3).
-// Every function takes the signed-in `user` and derives scope from it, exactly
-// like the real server will: a HOD's deptId is never taken from the request.
-import { DEPARTMENTS, USERS, TODAY_ISO, HISTORY_DAYS, dayIso, generateStudents, yearOf } from './mockData.js';
+// In-memory implementation of the API contract (BACKEND_PLAN §3), used when no backend is configured
+// and for the sections the real backend doesn't serve yet (stats, activity, attention, student detail).
+// Every function takes the signed-in `user` and derives scope from it, like the real server.
+import { DEPARTMENTS, USERS, TODAY_ISO, HISTORY_DAYS, dayIso, generateStudents, yearOf, scopeOf, DEMO_PASSWORD } from './mockData.js';
 import { parseProfileUrl, profileUrl } from '../lib/profileUrl.js';
 import { batchYearFor } from '../lib/yearOfStudy.js';
+import { scopeCovers } from '../lib/access.js';
 
 const students = generateStudents();
 const staff = USERS.map((u) => ({ ...u }));
 let nextStudentId = students.length + 1;
-let nextStaffId = staff.length + 1;
+let nextStaffId = 100;
 
 const wait = (ms = 220) => new Promise((r) => setTimeout(r, ms + Math.random() * 180));
 
-class ApiError extends Error {
-  constructor(status, code, message) {
+export class ApiError extends Error {
+  constructor(status, code, message, details = {}) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
 const deptById = (id) => DEPARTMENTS.find((d) => d.id === id);
-const publicUser = (u) => ({
-  id: u.id,
-  username: u.username,
-  role: u.role,
-  deptId: u.deptId,
-  deptName: u.deptId ? deptById(u.deptId).name : null,
-  displayTitle: u.displayTitle,
-});
+const publicUser = ({ password, ...rest }) => rest;
+const assertAdmin = (user) => { if (user.role !== 'admin') throw new ApiError(403, 'FORBIDDEN', 'Admin access required'); };
+const covers = (user, s) => scopeCovers(user, { deptId: s.deptId, yearOfStudy: yearOf(s) });
 
-function scopeDept(user, requested) {
-  if (user.role === 'hod') return user.deptId; // server-derived; request is ignored
-  return requested ? Number(requested) : null;
+function visible(user, { deptId, year = 'all' } = {}) {
+  const d = deptId ? Number(deptId) : null;
+  const y = year === 'all' || year == null ? null : Number(year);
+  if ((d || y) && user.role !== 'admin' && !user.scopes.some((s) => (d == null || s.deptId == null || s.deptId === d) && (y == null || s.year == null || s.year === y))) {
+    throw new ApiError(403, 'FORBIDDEN', 'You do not have access to that department or year');
+  }
+  return students.filter((s) => covers(user, s) && (d == null || s.deptId === d) && (y == null || yearOf(s) === y));
 }
-
-const scoped = (user, deptId, year = 'all') => {
-  const d = scopeDept(user, deptId);
-  return students.filter((s) => (d ? s.deptId === d : true) && (year === 'all' || yearOf(s) === Number(year)));
-};
 
 const lastIdx = HISTORY_DAYS - 1;
 const total = (s, p) => (s[p].history ? s[p].history[lastIdx] : null);
@@ -48,38 +44,49 @@ const gain = (s, p, days) => (s[p].history ? s[p].history[lastIdx] - s[p].histor
 export async function login(username, password) {
   await wait(350);
   const u = staff.find((x) => x.username === username.trim().toLowerCase());
-  if (!u || u.password !== password) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Wrong username or password.');
-  if (u.disabled) throw new ApiError(403, 'DISABLED', 'This account is disabled. Ask the administrator.');
-  return { user: publicUser(u) };
+  if (!u || u.password !== password || u.disabled) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid username or password');
+  return publicUser(u);
 }
 
-export async function me(userId) {
-  const u = staff.find((x) => x.id === userId);
-  if (!u || u.disabled) throw new ApiError(401, 'UNAUTHENTICATED', 'Session expired.');
-  return { user: publicUser(u) };
+export async function me(id) {
+  const u = staff.find((x) => x.id === id);
+  if (!u || u.disabled) throw new ApiError(401, 'UNAUTHENTICATED', 'Login required');
+  return publicUser(u);
+}
+
+export async function changePassword(user, currentPassword, newPassword) {
+  await wait(300);
+  const u = staff.find((x) => x.id === user.id);
+  if (u.password !== currentPassword) throw new ApiError(400, 'WRONG_PASSWORD', 'Current password is incorrect');
+  if (String(newPassword).length < 8) throw new ApiError(400, 'WEAK_PASSWORD', 'Password must be at least 8 characters');
+  if (newPassword === currentPassword) throw new ApiError(400, 'WEAK_PASSWORD', 'New password must be different from the current one');
+  u.password = newPassword;
+  u.mustChangePassword = false;
+  return publicUser(u);
 }
 
 // ── reference ───────────────────────────────────────────────────────────
 export async function departments(user) {
   await wait(80);
-  return DEPARTMENTS.filter((d) => user.role !== 'hod' || d.id === user.deptId).map(({ id, name, code }) => ({ id, name, code }));
+  return DEPARTMENTS
+    .filter((d) => user.role === 'admin' || user.scopes.some((s) => s.deptId == null || s.deptId === d.id))
+    .map(({ id, name, code }) => ({ id, name, code }));
 }
 
 export async function departmentOverview(user) {
   await wait();
-  return DEPARTMENTS.filter((d) => user.role !== 'hod' || d.id === user.deptId).map((d) => {
-    const list = students.filter((s) => s.deptId === d.id);
+  const allowed = new Set((await departments(user)).map((d) => d.id));
+  return DEPARTMENTS.filter((d) => allowed.has(d.id)).map((d) => {
+    const list = visible(user, { deptId: d.id });
     const lc = list.filter((s) => total(s, 'leetcode') != null);
     const avg = lc.length ? Math.round(lc.reduce((a, s) => a + total(s, 'leetcode'), 0) / lc.length) : 0;
     const active = list.filter((s) => gain(s, 'leetcode', 7) + gain(s, 'hackerrank', 7) > 0).length;
     const attention = list.filter((s) => s.leetcode.status !== 'ok' || s.hackerrank.status !== 'ok').length;
     const top = [...lc].sort((a, b) => total(b, 'leetcode') - total(a, 'leetcode'))[0];
-    const spark = weeklySeries(list, 'leetcode', 12);
     return {
-      id: d.id, code: d.code, name: d.name,
-      students: list.length, avgSolved: avg, active, attention,
+      id: d.id, code: d.code, name: d.name, students: list.length, avgSolved: avg, active, attention,
       top: top ? { name: top.name, solved: total(top, 'leetcode') } : null,
-      spark,
+      spark: weeklySeries(list, 'leetcode', 12),
     };
   });
 }
@@ -87,45 +94,32 @@ export async function departmentOverview(user) {
 // ── leaderboard ─────────────────────────────────────────────────────────
 export async function leaderboard(user, { platform = 'leetcode', sort = 'solved', year = 'all', deptId, limit = 20 } = {}) {
   await wait();
-  if (platform === 'hackerrank' && sort === 'rank') {
-    throw new ApiError(400, 'BAD_REQUEST', 'HackerRank sorts by problems solved only.');
-  }
-  const list = scoped(user, deptId, year).filter((s) => total(s, platform) != null && s[platform].status !== 'not_found');
+  if (platform === 'hackerrank' && sort === 'rank') throw new ApiError(400, 'BAD_REQUEST', 'HackerRank can only be sorted by problems solved');
+  const list = visible(user, { deptId, year }).filter((s) => total(s, platform) != null && s[platform].status !== 'not_found');
   const sorted = list.sort((a, b) => {
     if (platform === 'leetcode' && sort === 'rank') {
-      const ra = a.leetcode.globalRank ?? Infinity;
-      const rb = b.leetcode.globalRank ?? Infinity;
-      return ra - rb || total(b, platform) - total(a, platform);
+      return (a.leetcode.globalRank ?? Infinity) - (b.leetcode.globalRank ?? Infinity) || total(b, platform) - total(a, platform);
     }
     const t = total(b, platform) - total(a, platform);
     if (t) return t;
-    if (platform === 'leetcode') return b.leetcode.hard - a.leetcode.hard || b.leetcode.medium - a.leetcode.medium;
-    return 0;
+    return platform === 'leetcode' ? b.leetcode.hard - a.leetcode.hard || b.leetcode.medium - a.leetcode.medium : 0;
   });
   const entries = sorted.slice(0, limit).map((s, i) => ({
-    position: i + 1,
-    studentId: s.id,
-    name: s.name,
-    rollNo: s.rollNo,
-    deptCode: s.deptCode,
-    batchYear: s.batchYear,
-    yearOfStudy: yearOf(s),
-    solved:
-      platform === 'leetcode'
-        ? { total: total(s, platform), easy: s.leetcode.easy, medium: s.leetcode.medium, hard: s.leetcode.hard }
-        : { total: total(s, platform), easy: null, medium: null, hard: null },
+    position: i + 1, studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: yearOf(s),
+    solved: platform === 'leetcode'
+      ? { total: total(s, platform), easy: s.leetcode.easy, medium: s.leetcode.medium, hard: s.leetcode.hard }
+      : { total: total(s, platform), easy: null, medium: null, hard: null },
     globalRank: platform === 'leetcode' ? s.leetcode.globalRank : null,
     stars: platform === 'hackerrank' ? s.hackerrank.stars : null,
     weekGain: gain(s, platform, 7),
     stale: s[platform].status !== 'ok' || s[platform].lastOk !== TODAY_ISO,
     profileUrl: profileUrl(platform, platform === 'leetcode' ? s.leetcodeUsername : s.hackerrankUsername),
   }));
-  return { platform, sort, year, deptId: scopeDept(user, deptId), asOf: TODAY_ISO, count: list.length, entries };
+  return { platform, sort, year, deptId: deptId ? Number(deptId) : null, asOf: TODAY_ISO, count: list.length, entries };
 }
 
-// ── stats for the dashboard ─────────────────────────────────────────────
+// ── stats for the dashboard (not on the real backend yet) ───────────────
 function weeklySeries(list, platform, weeks) {
-  // Average solved per student, sampled weekly (end of each week).
   const out = [];
   const withData = list.filter((s) => s[platform].history);
   for (let w = weeks - 1; w >= 0; w--) {
@@ -138,16 +132,15 @@ function weeklySeries(list, platform, weeks) {
 
 export async function stats(user, { deptId } = {}) {
   await wait();
-  const list = scoped(user, deptId);
+  const list = visible(user, { deptId });
   const lc = list.filter((s) => total(s, 'leetcode') != null);
   const active = list.filter((s) => gain(s, 'leetcode', 7) + gain(s, 'hackerrank', 7) > 0);
   const weekSolved = list.reduce((a, s) => a + gain(s, 'leetcode', 7) + gain(s, 'hackerrank', 7), 0);
   const avg = lc.length ? Math.round(lc.reduce((a, s) => a + total(s, 'leetcode'), 0) / lc.length) : 0;
 
-  const weeks = 12;
   const activeSpark = [];
   const weekSpark = [];
-  for (let w = weeks - 1; w >= 0; w--) {
+  for (let w = 11; w >= 0; w--) {
     const end = lastIdx - w * 7;
     const start = end - 7;
     if (start < 0) continue;
@@ -163,17 +156,15 @@ export async function stats(user, { deptId } = {}) {
     weekSpark.push(sum);
   }
 
-  // Timeline: weekly average solved per student, both platforms, ~17 weeks.
   const points = [];
   for (let w = 16; w >= 0; w--) {
     const idx = lastIdx - w * 7;
     if (idx < 0) continue;
-    const day = dayIso(w * 7);
     const avgOf = (p) => {
       const l = list.filter((s) => s[p].history);
       return l.length ? Math.round((l.reduce((a, s) => a + s[p].history[idx], 0) / l.length) * 10) / 10 : 0;
     };
-    points.push({ date: day, leetcode: avgOf('leetcode'), hackerrank: avgOf('hackerrank') });
+    points.push({ date: dayIso(w * 7), leetcode: avgOf('leetcode'), hackerrank: avgOf('hackerrank') });
   }
 
   const health = (p) => {
@@ -195,13 +186,11 @@ export async function stats(user, { deptId } = {}) {
   };
 }
 
-// Derived from snapshot differences — we only scrape nightly, so there are
-// no per-solve timestamps; "+N since yesterday" is the honest version.
+// Derived from snapshot differences: we only scrape nightly, so there are no per-solve timestamps.
 export async function activity(user, { deptId, limit = 8 } = {}) {
   await wait(160);
-  const list = scoped(user, deptId);
   const events = [];
-  for (const s of list) {
+  for (const s of visible(user, { deptId })) {
     for (const p of ['leetcode', 'hackerrank']) {
       const h = s[p].history;
       if (!h) continue;
@@ -218,13 +207,11 @@ export async function activity(user, { deptId, limit = 8 } = {}) {
   return events.slice(0, limit);
 }
 
-// ── students ────────────────────────────────────────────────────────────
+// ── student detail & attention (not on the real backend yet) ────────────
 function studentSummary(s) {
   return {
-    id: s.id, name: s.name, rollNo: s.rollNo, deptId: s.deptId, deptCode: s.deptCode,
-    deptName: deptById(s.deptId).name,
-    batchYear: s.batchYear, yearOfStudy: yearOf(s),
-    leetcodeUsername: s.leetcodeUsername, hackerrankUsername: s.hackerrankUsername,
+    id: s.id, name: s.name, rollNo: s.rollNo, deptId: s.deptId, deptCode: s.deptCode, deptName: deptById(s.deptId).name,
+    batchYear: s.batchYear, yearOfStudy: yearOf(s), leetcodeUsername: s.leetcodeUsername, hackerrankUsername: s.hackerrankUsername,
     leetcode: {
       status: s.leetcode.status, total: total(s, 'leetcode'), easy: s.leetcode.easy, medium: s.leetcode.medium, hard: s.leetcode.hard,
       globalRank: s.leetcode.globalRank, lastOk: s.leetcode.lastOk, lastError: s.leetcode.lastError, weekGain: gain(s, 'leetcode', 7),
@@ -238,20 +225,10 @@ function studentSummary(s) {
   };
 }
 
-export async function listStudents(user, { deptId, year = 'all', q = '', page = 1, pageSize = 25 } = {}) {
-  await wait(160);
-  const needle = q.trim().toLowerCase();
-  let list = scoped(user, deptId, year);
-  if (needle) list = list.filter((s) => s.name.toLowerCase().includes(needle) || s.rollNo.toLowerCase().includes(needle));
-  list = [...list].sort((a, b) => a.rollNo.localeCompare(b.rollNo));
-  const start = (page - 1) * pageSize;
-  return { total: list.length, page, pageSize, items: list.slice(start, start + pageSize).map(studentSummary) };
-}
-
 export async function student(user, id) {
   await wait();
   const s = students.find((x) => x.id === Number(id));
-  if (!s || (user.role === 'hod' && s.deptId !== user.deptId)) throw new ApiError(404, 'NOT_FOUND', 'Student not found.');
+  if (!s || !covers(user, s)) throw new ApiError(404, 'NOT_FOUND', 'Student not found');
   const history = [];
   for (let i = 0; i < HISTORY_DAYS; i++) {
     if (i % 3 !== 0 && i !== lastIdx) continue;
@@ -261,24 +238,21 @@ export async function student(user, id) {
       hackerrank: s.hackerrank.history ? s.hackerrank.history[i] : null,
     });
   }
-  const first = history[0];
-  return { ...studentSummary(s), history, firstSnapshot: first?.date };
+  return { ...studentSummary(s), history, firstSnapshot: history[0]?.date };
 }
+
+const daysBetween = (iso) => Math.round((new Date(TODAY_ISO) - new Date(iso)) / 86400000);
 
 export async function attention(user, { deptId } = {}) {
   await wait();
-  const list = scoped(user, deptId);
   const broken = [];
   const stale = [];
   const inactive = [];
-  for (const s of list) {
+  for (const s of visible(user, { deptId })) {
     for (const p of ['leetcode', 'hackerrank']) {
       const st = s[p];
-      const base = {
-        studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, yearOfStudy: yearOf(s),
-        platform: p, username: p === 'leetcode' ? s.leetcodeUsername : s.hackerrankUsername,
-        url: profileUrl(p, p === 'leetcode' ? s.leetcodeUsername : s.hackerrankUsername),
-      };
+      const username = p === 'leetcode' ? s.leetcodeUsername : s.hackerrankUsername;
+      const base = { studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, yearOfStudy: yearOf(s), platform: p, username, url: profileUrl(p, username) };
       if (st.status !== 'ok') broken.push({ ...base, status: st.status, error: st.lastError, lastOk: st.lastOk });
       else if (st.lastOk && st.lastOk !== TODAY_ISO && daysBetween(st.lastOk) >= 3) stale.push({ ...base, lastOk: st.lastOk });
     }
@@ -289,162 +263,265 @@ export async function attention(user, { deptId } = {}) {
   return { broken, stale, inactive };
 }
 
-function daysBetween(iso) {
-  return Math.round((new Date(TODAY_ISO) - new Date(iso)) / 86400000);
-}
-
-// ── admin ───────────────────────────────────────────────────────────────
-function assertAdmin(user) {
-  if (user.role !== 'admin') throw new ApiError(403, 'FORBIDDEN', 'Admin access required.');
-}
-
+// ── admin: students (same shapes as the real endpoints) ─────────────────
 const hash = (str) => [...str].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+const missing = (name) => /notfound|invalid|missing/i.test(name);
 
-async function probe(platform, username) {
-  const low = username.toLowerCase();
-  if (low.includes('notfound') || low.includes('invalid') || low.includes('missing')) return { ok: false, error: `${platform === 'leetcode' ? 'LeetCode' : 'HackerRank'} profile "${username}" not found` };
-  const h = hash(username);
-  return { ok: true, username, solved: platform === 'leetcode' ? h % 420 : h % 140 };
+function accountsOf(s) {
+  const mk = (platform, username, st) => ({
+    platform, username, profileUrl: profileUrl(platform, username),
+    state: st.status === 'not_found' ? 'broken' : 'active', attempts: st.status === 'error' ? 2 : 0,
+    lastOkAt: st.lastOk ? `${st.lastOk}T02:10:00.000Z` : null, lastError: st.lastError,
+  });
+  return [
+    ...(s.leetcodeUsername ? [mk('leetcode', s.leetcodeUsername, s.leetcode)] : []),
+    ...(s.hackerrankUsername ? [mk('hackerrank', s.hackerrankUsername, s.hackerrank)] : []),
+  ];
 }
 
-function validateRowShape(row, seenRolls) {
+const adminStudent = (s) => ({
+  id: s.id, rollNo: s.rollNo, name: s.name, deptId: s.deptId, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: yearOf(s), accounts: accountsOf(s),
+});
+
+export async function adminStudents(user, { deptId, batchYear, q, page = 1, pageSize = 50 } = {}) {
+  assertAdmin(user);
+  await wait(160);
+  const needle = (q || '').trim().toLowerCase();
+  let list = students.filter((s) => (!deptId || s.deptId === Number(deptId)) && (!batchYear || s.batchYear === Number(batchYear)));
+  if (needle) list = list.filter((s) => s.name.toLowerCase().includes(needle) || s.rollNo.toLowerCase().includes(needle));
+  list = [...list].sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id);
+  const start = (page - 1) * pageSize;
+  return { items: list.slice(start, start + pageSize).map(adminStudent), page: Number(page), pageSize: Number(pageSize), total: list.length };
+}
+
+// Returns the row's problems, or the parsed accounts.
+function inspectRow(row, seen) {
   const errors = [];
-  if (!row.name?.trim()) errors.push('Name is required');
-  const roll = row.rollNo?.trim();
-  if (!roll) errors.push('Roll number is required');
-  else if (students.some((s) => s.rollNo.toLowerCase() === roll.toLowerCase()) || seenRolls.has(roll.toLowerCase())) errors.push(`Roll number ${roll} already exists`);
-  if (!DEPARTMENTS.some((d) => d.code === (row.deptCode || '').trim().toUpperCase())) errors.push(`Unknown department "${row.deptCode || ''}"`);
-  const by = Number(row.batchYear);
-  if (!Number.isInteger(by) || by < batchYearFor(4) || by > batchYearFor(1)) errors.push(`Batch must be ${batchYearFor(4)}–${batchYearFor(1)}`);
-  return errors;
+  if (!String(row.name ?? '').trim()) errors.push('name is required');
+  const roll = String(row.rollNo ?? '').trim();
+  if (!roll) errors.push('rollNo is required');
+  else if (students.some((s) => s.rollNo.toLowerCase() === roll.toLowerCase())) errors.push(`roll number ${roll} already exists`);
+  else if (seen?.has(roll.toLowerCase())) errors.push(`roll number ${roll} appears more than once in this file`);
+  const dept = DEPARTMENTS.find((d) => d.code === String(row.deptCode ?? '').trim().toUpperCase() || d.id === Number(row.deptId));
+  if (!dept) errors.push(row.deptCode || row.deptId ? `unknown department: ${row.deptCode ?? row.deptId}` : 'department is required');
+  const batch = Number(row.batchYear);
+  if (!Number.isInteger(batch) || batch < 2000 || batch > 2100) errors.push('batchYear must be a year like 2028');
+  const accounts = [];
+  let gave = 0;
+  for (const [platform, key] of [['leetcode', 'leetcodeUrl'], ['hackerrank', 'hackerrankUrl']]) {
+    if (!String(row[key] ?? '').trim()) continue;
+    gave++;
+    const p = parseProfileUrl(platform, row[key]);
+    if (p.error) errors.push(`${platform}: ${p.error}`);
+    else accounts.push({ platform, username: p.username });
+  }
+  if (!gave) errors.push('at least one profile URL is required');
+  return { errors, dept, batch, roll, accounts };
+}
+
+const solvedFor = (platform, username) => (platform === 'leetcode' ? hash(username) % 420 : hash(username) % 140);
+
+function insertStudent({ dept, batch, roll, accounts }, row) {
+  const flat = (n) => Array.from({ length: HISTORY_DAYS }, () => n);
+  const lc = accounts.find((a) => a.platform === 'leetcode');
+  const hr = accounts.find((a) => a.platform === 'hackerrank');
+  const lcN = lc ? solvedFor('leetcode', lc.username) : 0;
+  const hrN = hr ? solvedFor('hackerrank', hr.username) : 0;
+  const s = {
+    id: nextStudentId++, rollNo: roll, name: row.name.trim(), deptId: dept.id, deptCode: dept.code, batchYear: batch,
+    leetcodeUsername: lc?.username ?? null, hackerrankUsername: hr?.username ?? null,
+    leetcode: lc
+      ? { status: 'ok', history: flat(lcN), easy: Math.round(lcN * 0.6), medium: Math.round(lcN * 0.33), hard: Math.round(lcN * 0.07), globalRank: null, lastError: null, lastOk: TODAY_ISO }
+      : { status: 'ok', history: null, easy: 0, medium: 0, hard: 0, globalRank: null, lastError: null, lastOk: null },
+    hackerrank: hr
+      ? { status: 'ok', history: flat(hrN), stars: 1, lastError: null, lastOk: TODAY_ISO }
+      : { status: 'ok', history: null, stars: null, lastError: null, lastOk: null },
+  };
+  students.push(s);
+  return s;
+}
+
+const verifyAccounts = (accounts) => accounts.map((a) => (missing(a.username)
+  ? { ...a, verified: 'not_found' }
+  : { ...a, verified: 'ok', solvedTotal: solvedFor(a.platform, a.username) }));
+
+export async function addStudent(user, row) {
+  assertAdmin(user);
+  await wait(700);
+  const r = inspectRow(row);
+  const checks = verifyAccounts(r.accounts);
+  const errors = [...r.errors, ...checks.filter((c) => c.verified === 'not_found').map((c) => `${c.platform}: profile "${c.username}" was not found`)];
+  if (errors.length) {
+    const dup = errors.some((e) => e.includes('already exists'));
+    throw new ApiError(dup ? 409 : 422, dup ? 'ROLL_NUMBER_EXISTS' : 'VALIDATION_FAILED', errors.join('; '), { errors });
+  }
+  const s = insertStudent(r, row);
+  return {
+    studentId: s.id, student: adminStudent(s), warnings: [],
+    accounts: checks.map((c) => ({ platform: c.platform, username: c.username, verified: 'ok', stats: { solvedTotal: c.solvedTotal } })),
+  };
 }
 
 export async function validateRows(user, rows) {
   assertAdmin(user);
-  if (rows.length > 10) throw new ApiError(400, 'BAD_REQUEST', 'At most 10 rows per call.');
+  if (rows.length > 10) throw new ApiError(400, 'BAD_REQUEST', 'rows: at most 10 rows per call');
   await wait(500);
   const seen = new Set();
-  const out = [];
-  for (const row of rows) {
-    const errors = validateRowShape(row, seen);
-    if (row.rollNo) seen.add(row.rollNo.trim().toLowerCase());
-    const lc = parseProfileUrl('leetcode', row.leetcodeUrl);
-    const hr = parseProfileUrl('hackerrank', row.hackerrankUrl);
-    let leetcode = null;
-    let hackerrank = null;
-    if (lc.error) errors.push(`LeetCode: ${lc.error}`);
-    else {
-      const p = await probe('leetcode', lc.username);
-      if (p.ok) leetcode = { username: p.username, solved: p.solved };
-      else errors.push(p.error);
-    }
-    if (hr.error) errors.push(`HackerRank: ${hr.error}`);
-    else {
-      const p = await probe('hackerrank', hr.username);
-      if (p.ok) hackerrank = { username: p.username, solved: p.solved };
-      else errors.push(p.error);
-    }
-    out.push({ ok: errors.length === 0, errors, leetcode, hackerrank });
-  }
-  return out;
+  return {
+    results: rows.map((row, index) => {
+      const r = inspectRow(row, seen);
+      if (r.roll) seen.add(r.roll.toLowerCase());
+      if (r.errors.length) return { index, checked: true, ok: false, errors: r.errors, warnings: [], accounts: [] };
+      const checks = verifyAccounts(r.accounts);
+      const notFound = checks.filter((c) => c.verified === 'not_found').map((c) => `${c.platform}: profile "${c.username}" was not found`);
+      return {
+        index, checked: true, ok: !notFound.length, errors: notFound, warnings: [],
+        accounts: checks.map((c) => ({ platform: c.platform, username: c.username, verified: c.verified === 'ok' ? 'ok' : 'unverified', solvedTotal: c.solvedTotal ?? null })),
+      };
+    }),
+  };
 }
 
-export async function addStudent(user, row) {
-  assertAdmin(user);
-  const [res] = await validateRows(user, [row]);
-  if (!res.ok) throw new ApiError(409, 'VALIDATION_FAILED', res.errors.join(' · '));
-  createFromRow(row, res);
-  return res;
-}
-
-function createFromRow(row, res) {
-  const dept = DEPARTMENTS.find((d) => d.code === row.deptCode.trim().toUpperCase());
-  const flat = (n) => Array.from({ length: HISTORY_DAYS }, () => n);
-  students.push({
-    id: nextStudentId++, rollNo: row.rollNo.trim(), name: row.name.trim(), deptId: dept.id, deptCode: dept.code,
-    batchYear: Number(row.batchYear), leetcodeUsername: res.leetcode.username, hackerrankUsername: res.hackerrank.username,
-    leetcode: { status: 'ok', history: flat(res.leetcode.solved), easy: Math.round(res.leetcode.solved * 0.6), medium: Math.round(res.leetcode.solved * 0.33), hard: Math.round(res.leetcode.solved * 0.07), globalRank: null, lastError: null, lastOk: TODAY_ISO },
-    hackerrank: { status: 'ok', history: flat(res.hackerrank.solved), stars: 1, lastError: null, lastOk: TODAY_ISO },
-  });
-}
-
-export async function importRows(user, items) {
+export async function importRows(user, rows) {
   assertAdmin(user);
   await wait(600);
   const created = [];
   const skipped = [];
-  for (const { row, result } of items) {
-    if (students.some((s) => s.rollNo.toLowerCase() === row.rollNo.trim().toLowerCase())) {
-      skipped.push({ rollNo: row.rollNo, reason: 'Duplicate roll number' });
-      continue;
-    }
-    createFromRow(row, result);
-    created.push(row.rollNo);
-  }
-  return { created: created.length, skipped };
+  rows.forEach((row, index) => {
+    const r = inspectRow(row);
+    if (r.errors.length) { skipped.push({ index, rollNo: r.roll || null, reason: r.errors.join('; ') }); return; }
+    created.push({ index, studentId: insertStudent(r, row).id, rollNo: r.roll });
+  });
+  return { created, skipped };
 }
 
 export async function updateStudent(user, id, patch) {
   assertAdmin(user);
-  await wait(300);
+  await wait(500);
   const s = students.find((x) => x.id === Number(id));
-  if (!s) throw new ApiError(404, 'NOT_FOUND', 'Student not found.');
-  if (patch.name) s.name = patch.name.trim();
-  if (patch.batchYear) s.batchYear = Number(patch.batchYear);
-  if (patch.deptId) { s.deptId = Number(patch.deptId); s.deptCode = deptById(s.deptId).code; }
-  return studentSummary(s);
+  if (!s) throw new ApiError(404, 'NOT_FOUND', 'Student not found');
+  const errors = [];
+  if (patch.name !== undefined) { if (!String(patch.name).trim()) errors.push('name is required'); else s.name = String(patch.name).trim(); }
+  if (patch.rollNo !== undefined) {
+    const roll = String(patch.rollNo).trim();
+    if (!roll) errors.push('rollNo is required');
+    else if (students.some((x) => x.id !== s.id && x.rollNo.toLowerCase() === roll.toLowerCase())) throw new ApiError(409, 'ROLL_NUMBER_EXISTS', `roll number ${roll} already exists`);
+    else s.rollNo = roll;
+  }
+  if (patch.batchYear !== undefined) s.batchYear = Number(patch.batchYear);
+  if (patch.deptId !== undefined) { const d = deptById(Number(patch.deptId)); if (d) { s.deptId = d.id; s.deptCode = d.code; } else errors.push('unknown department'); }
+  for (const [platform, key, field] of [['leetcode', 'leetcodeUrl', 'leetcodeUsername'], ['hackerrank', 'hackerrankUrl', 'hackerrankUsername']]) {
+    if (patch[key] === undefined) continue;
+    if (patch[key] === null || !String(patch[key]).trim()) { s[field] = null; continue; }
+    const p = parseProfileUrl(platform, patch[key]);
+    if (p.error) errors.push(`${platform}: ${p.error}`);
+    else if (missing(p.username)) errors.push(`${platform}: profile "${p.username}" was not found`);
+    else {
+      s[field] = p.username;
+      const n = solvedFor(platform, p.username);
+      s[platform] = { ...s[platform], status: 'ok', lastError: null, lastOk: TODAY_ISO, history: Array.from({ length: HISTORY_DAYS }, () => n) };
+    }
+  }
+  if (!s.leetcodeUsername && !s.hackerrankUsername) errors.push('a student needs at least one profile URL');
+  if (errors.length) throw new ApiError(422, 'VALIDATION_FAILED', errors.join('; '), { errors });
+  return { student: adminStudent(s), warnings: [] };
 }
 
 export async function deleteStudent(user, id) {
   assertAdmin(user);
   await wait(300);
   const i = students.findIndex((x) => x.id === Number(id));
-  if (i < 0) throw new ApiError(404, 'NOT_FOUND', 'Student not found.');
+  if (i < 0) throw new ApiError(404, 'NOT_FOUND', 'Student not found');
   students.splice(i, 1);
-  return { ok: true };
+  return null;
 }
 
-export async function listStaff(user) {
+export async function refreshStudent(user, id) {
+  assertAdmin(user);
+  await wait(900);
+  const s = students.find((x) => x.id === Number(id));
+  if (!s) throw new ApiError(404, 'NOT_FOUND', 'Student not found');
+  const results = accountsOf(s).map((a) => (missing(a.username)
+    ? { platform: a.platform, username: a.username, status: 'not_found' }
+    : { platform: a.platform, username: a.username, status: 'ok', stats: { solvedTotal: solvedFor(a.platform, a.username) } }));
+  return { student: adminStudent(s), results };
+}
+
+// ── admin: users & departments ──────────────────────────────────────────
+function cleanScopes(role, scopes) {
+  if (role === 'admin') {
+    if (scopes?.length) throw new ApiError(400, 'BAD_REQUEST', 'Admins see everything and cannot have scopes');
+    return [];
+  }
+  if (!scopes?.length) throw new ApiError(400, 'BAD_REQUEST', 'Viewers need at least one scope');
+  const seen = new Set();
+  return scopes.filter((s) => { const k = `${s.deptId ?? 0}:${s.year ?? 0}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .map((s) => scopeOf(s.deptId ?? null, s.year ?? null));
+}
+
+const tempPassword = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+};
+
+export async function listUsers(user) {
   assertAdmin(user);
   await wait(160);
-  return staff.map((u) => ({ ...publicUser(u), disabled: u.disabled }));
+  return [...staff].sort((a, b) => a.username.localeCompare(b.username)).map(publicUser);
 }
 
-export async function createStaff(user, { username, role, deptId, displayTitle }) {
+export async function createUser(user, { username, displayTitle, role, password, scopes }) {
   assertAdmin(user);
   await wait(300);
-  const uname = username.trim().toLowerCase();
-  if (!uname) throw new ApiError(400, 'BAD_REQUEST', 'Username is required.');
-  if (staff.some((u) => u.username === uname)) throw new ApiError(409, 'CONFLICT', 'That username is taken.');
-  if (role === 'hod' && !deptId) throw new ApiError(400, 'BAD_REQUEST', 'A HOD needs a department.');
-  const temp = tempPassword();
-  const u = { id: nextStaffId++, username: uname, role, deptId: role === 'hod' ? Number(deptId) : null, displayTitle: displayTitle.trim() || uname, password: temp, disabled: false };
+  const name = String(username || '').trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,32}$/.test(name)) throw new ApiError(400, 'BAD_REQUEST', 'username must be 3-32 characters: letters, digits, dot, dash or underscore');
+  if (staff.some((u) => u.username === name)) throw new ApiError(409, 'USERNAME_TAKEN', `Username ${name} is already taken`);
+  const generated = !password;
+  const plain = generated ? tempPassword() : password;
+  if (plain.length < 8) throw new ApiError(400, 'BAD_REQUEST', 'Password must be at least 8 characters');
+  const u = { id: nextStaffId++, username: name, role, displayTitle: displayTitle?.trim() || null, scopes: cleanScopes(role, scopes), password: plain, mustChangePassword: true, disabled: false };
   staff.push(u);
-  return { user: publicUser(u), tempPassword: temp };
+  return { user: publicUser(u), temporaryPassword: generated ? plain : undefined };
 }
 
-export async function setStaffDisabled(user, id, disabled) {
-  assertAdmin(user);
-  await wait(200);
-  const u = staff.find((x) => x.id === id);
-  if (!u) throw new ApiError(404, 'NOT_FOUND', 'Account not found.');
-  if (u.id === user.id) throw new ApiError(400, 'BAD_REQUEST', 'You cannot disable your own account.');
-  u.disabled = disabled;
-  return { ok: true };
-}
-
-export async function resetPassword(user, id) {
+export async function updateUser(user, id, { displayTitle, role, scopes, disabled }) {
   assertAdmin(user);
   await wait(300);
   const u = staff.find((x) => x.id === id);
-  if (!u) throw new ApiError(404, 'NOT_FOUND', 'Account not found.');
-  u.password = tempPassword();
-  return { tempPassword: u.password };
+  if (!u) throw new ApiError(404, 'NOT_FOUND', 'User not found');
+  const newRole = role ?? u.role;
+  const newDisabled = disabled ?? u.disabled;
+  const otherAdmins = staff.some((x) => x.id !== u.id && x.role === 'admin' && !x.disabled);
+  if (u.role === 'admin' && !u.disabled && (newRole !== 'admin' || newDisabled) && !otherAdmins) throw new ApiError(409, 'LAST_ADMIN', 'At least one active admin must remain');
+  if (scopes !== undefined) u.scopes = cleanScopes(newRole, scopes);
+  else if (newRole !== u.role) u.scopes = cleanScopes(newRole, newRole === 'admin' ? [] : undefined);
+  if (displayTitle !== undefined) u.displayTitle = displayTitle?.trim() || null;
+  u.role = newRole;
+  u.disabled = newDisabled;
+  return publicUser(u);
 }
 
-function tempPassword() {
-  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+export async function resetPassword(user, id, password) {
+  assertAdmin(user);
+  await wait(300);
+  const u = staff.find((x) => x.id === id);
+  if (!u) throw new ApiError(404, 'NOT_FOUND', 'User not found');
+  const generated = !password;
+  u.password = generated ? tempPassword() : password;
+  u.mustChangePassword = true;
+  return { temporaryPassword: generated ? u.password : undefined };
 }
 
-export { ApiError };
+export async function createDepartment(user, name, code) {
+  assertAdmin(user);
+  await wait(300);
+  const c = String(code).trim().toUpperCase();
+  if (DEPARTMENTS.some((d) => d.code === c || d.name.toLowerCase() === String(name).trim().toLowerCase())) {
+    throw new ApiError(409, 'DEPARTMENT_EXISTS', 'A department with that name or code already exists');
+  }
+  const d = { id: DEPARTMENTS.length + 1, code: c, name: String(name).trim(), size: 0, skill: 0.5 };
+  DEPARTMENTS.push(d);
+  return { id: d.id, name: d.name, code: d.code };
+}
+
+export { DEMO_PASSWORD };

@@ -2,6 +2,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/index.js';
 import { useAsync } from '../lib/hooks.js';
 import { useAuth } from '../context/Auth.jsx';
+import { useScope } from '../context/Scope.jsx';
 import { greeting, longDate, num, relDay, shortDate } from '../lib/format.js';
 import { Icon } from '../components/Icons.jsx';
 import { Scribble } from '../components/Decor.jsx';
@@ -46,10 +47,10 @@ export default function Dashboard() {
   const { user } = useAuth();
   const nav = useNavigate();
   const params = useParams();
-  const isHod = user.role === 'hod';
-  const deptId = isHod ? user.deptId : params.deptId ? Number(params.deptId) : null;
-
-  const depts = useAsync(() => api.departments(), []);
+  const scope = useScope();
+  const isHod = !!scope.single; // one visible department: no picker, department-only view
+  const deptId = scope.single ? scope.single.id : params.deptId ? Number(params.deptId) : null;
+  const depts = { data: scope.departments };
   const stats = useAsync(() => api.stats({ deptId }), [deptId]);
   const feed = useAsync(() => api.activity({ deptId, limit: 7 }), [deptId]);
   const dept = depts.data?.find((d) => d.id === deptId);
@@ -63,7 +64,7 @@ export default function Dashboard() {
         <div>
           <h1>{greeting()}, {user.displayTitle}</h1>
           <Scribble />
-          <p className="sub">{isHod || dept ? scopeName : 'Whole college'}</p>
+          <p className="sub">{isHod || dept ? (scope.single ? scope.single.name : scopeName) : scope.multi && user.role !== 'admin' && !scope.years ? 'Your departments' : 'Whole college'}</p>
           <p className="date">{longDate()}</p>
         </div>
         <p className="quote" aria-hidden="true">“Consistent Practice Builds Progress”</p>
@@ -82,13 +83,13 @@ export default function Dashboard() {
       </div>
 
       <div className="grid main-grid">
-        <Leaderboard
+        {scope.ready ? <Leaderboard
           deptId={deptId}
           showDept={!deptId}
           allowDeptFilter={!isHod}
           departments={depts.data}
           onDept={(id) => nav(id ? `/dept/${id}` : '/')}
-        />
+        /> : <div className="card"><div className="skeleton" style={{ height: 420 }} /></div>}
 
         <div className="stack">
           <section className="card" aria-labelledby="ph">

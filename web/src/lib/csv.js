@@ -23,6 +23,7 @@ export function parseCsv(text) {
   return rows;
 }
 
+// Columns the file must have (URLs are both optional per row, but a row needs at least one).
 const ALIASES = {
   name: ['name', 'student name', 'student'],
   rollNo: ['roll_no', 'roll no', 'rollno', 'roll number', 'register no', 'register number'],
@@ -43,11 +44,11 @@ export function rowsFromCsv(text) {
     if (at < 0) missing.push(names[0]); else idx[key] = at;
   }
   if (missing.length) return { rows: [], missing };
+  const cell = (r, k) => (r[idx[k]] || '').trim();
   return {
     rows: grid.slice(1).map((r, n) => ({
-      key: n,
-      name: (r[idx.name] || '').trim(), rollNo: (r[idx.rollNo] || '').trim(), deptCode: (r[idx.deptCode] || '').trim(),
-      batchYear: (r[idx.batchYear] || '').trim(), leetcodeUrl: (r[idx.leetcodeUrl] || '').trim(), hackerrankUrl: (r[idx.hackerrankUrl] || '').trim(),
+      key: n, name: cell(r, 'name'), rollNo: cell(r, 'rollNo'), deptCode: cell(r, 'deptCode'),
+      batchYear: cell(r, 'batchYear'), leetcodeUrl: cell(r, 'leetcodeUrl'), hackerrankUrl: cell(r, 'hackerrankUrl'),
     })),
     missing: [],
   };
@@ -56,3 +57,6 @@ export function rowsFromCsv(text) {
 export const CSV_TEMPLATE =
   'name,roll_no,department,batch,leetcode_url,hackerrank_url\n' +
   'Arun Kumar,24CSE201,CSE,2028,https://leetcode.com/u/arunkumar,https://www.hackerrank.com/profile/arun_kumar\n';
+
+/** Rows sent to the API don't need our local `key`. */
+export const apiRow = ({ key, ...row }) => row;

@@ -5,6 +5,7 @@ import { useAsync } from '../lib/hooks.js';
 import { num, shortDate } from '../lib/format.js';
 import { COLORS } from './Charts.jsx';
 import { Icon } from './Icons.jsx';
+import { useScope } from '../context/Scope.jsx';
 
 export const YEARS = [
   ['all', 'All'], ['1', '1st year'], ['2', '2nd year'], ['3', '3rd year'], ['4', '4th year'],
@@ -82,6 +83,8 @@ export function LeaderboardTable({ data, platform, showDept, onOpen }) {
 /** The landing-page leaderboard: platform toggle, sort toggle, year tabs. */
 export default function Leaderboard({ deptId, showDept, allowDeptFilter, departments, onDept }) {
   const nav = useNavigate();
+  const { years: allowedYears } = useScope();
+  const yearTabs = allowedYears ? YEARS.filter(([k]) => k === 'all' || allowedYears.includes(Number(k))) : YEARS;
   const [platform, setPlatform] = useState('leetcode');
   const [sort, setSort] = useState('solved');
   const [year, setYear] = useState('all');
@@ -114,7 +117,7 @@ export default function Leaderboard({ deptId, showDept, allowDeptFilter, departm
       </div>
       <div className="controls" style={{ marginBottom: 6 }}>
         <div className="seg" role="tablist" aria-label="Year of study">
-          {YEARS.map(([k, l]) => (
+          {yearTabs.map(([k, l]) => (
             <button key={k} role="tab" aria-selected={year === k} onClick={() => setYear(k)}>{l}</button>
           ))}
         </div>

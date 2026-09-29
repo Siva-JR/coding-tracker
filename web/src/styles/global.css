@@ -210,7 +210,7 @@ h1, h2, h3, p { margin: 0; }
 .btn.ghost:hover:not(:disabled) { background: var(--blue-soft); }
 .btn.danger { background: var(--red); box-shadow: 0 8px 18px -10px rgba(201, 59, 59, 0.8); }
 .btn.sm { height: 36px; padding: 0 14px; font-size: 13.5px; border-radius: 10px; }
-.icon-btn { width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--ink-2); display: grid; place-items: center; }
+.icon-btn { width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--ink-2); display: inline-grid; place-items: center; vertical-align: middle; }
 .icon-btn:hover { background: var(--blue-soft); color: var(--blue-ink); }
 .icon-btn.danger:hover { background: var(--red-soft); color: var(--red); }
 .icon-btn svg { width: 18px; height: 18px; }

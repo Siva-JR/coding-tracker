@@ -1,55 +1,59 @@
-// Transport for the real backend (github.com/Siva-JR/coding-tracker).
-// Follows the AppSail constraints we agreed on: GET requests with no custom
-// headers (so the browser never sends a CORS preflight), POST bodies as
-// text/plain, and the session token in the query string.
+// Transport for the real backend (Siva-JR/coding-tracker).
+// Matches its contract: httpOnly session cookie (so credentials: 'include'), and every
+// non-GET request sends Content-Type: application/json (the backend's CSRF guard).
 export const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 export const isLiveConfigured = BASE !== '';
 
-let token = null;
-export const setToken = (t) => { token = t || null; };
-const withToken = (qs) => (token ? { ...qs, token } : qs);
-
 export class HttpError extends Error {
-  constructor(status, code, message) {
+  constructor(status, code, message, details = {}) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
-function toQuery(obj) {
+let onUnauthenticated = () => {};
+export const setUnauthenticatedHandler = (fn) => { onUnauthenticated = fn; };
+
+function toQuery(obj = {}) {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(obj)) if (v !== undefined && v !== null && v !== '') p.set(k, String(v));
   const s = p.toString();
   return s ? `?${s}` : '';
 }
 
-async function parse(res) {
-  let body = null;
-  try { body = await res.json(); } catch { /* non-JSON error page from the gateway */ }
-  if (!res.ok) {
-    const e = body?.error;
-    throw new HttpError(res.status, e?.code || 'HTTP_ERROR', e?.message || `Server returned ${res.status}`);
-  }
-  return body;
-}
-
-async function send(url, init, timeout = 15000) {
+async function request(method, path, { query, body, timeout = 30000, quiet401 = false } = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeout);
   try {
-    return await parse(await fetch(url, { ...init, signal: ctrl.signal }));
+    const res = await fetch(`${BASE}${path}${toQuery(query)}`, {
+      method,
+      credentials: 'include',
+      headers: method === 'GET' ? undefined : { 'Content-Type': 'application/json' },
+      body: method === 'GET' ? undefined : JSON.stringify(body ?? {}),
+      signal: ctrl.signal,
+    });
+    if (res.status === 204) return null;
+    let data = null;
+    try { data = await res.json(); } catch { /* gateway error pages are not JSON */ }
+    if (!res.ok) {
+      const e = data?.error || {};
+      const { code, message, ...details } = e;
+      if (res.status === 401 && !quiet401 && code === 'UNAUTHENTICATED') onUnauthenticated();
+      throw new HttpError(res.status, code || 'HTTP_ERROR', message || `Server returned ${res.status}`, details);
+    }
+    return data;
   } catch (err) {
     if (err instanceof HttpError) throw err;
     if (err.name === 'AbortError') throw new HttpError(408, 'TIMEOUT', 'The server took too long to answer.');
-    throw new HttpError(0, 'NETWORK', 'Could not reach the server.');
+    throw new HttpError(0, 'NETWORK', 'Could not reach the server. Check your connection and try again.');
   } finally {
     clearTimeout(t);
   }
 }
 
-export const get = (path, query = {}) => send(`${BASE}${path}${toQuery(withToken(query))}`);
-
-/** JSON as text/plain keeps this a "simple" request (no preflight). */
-export const post = (path, body = {}, query = {}) =>
-  send(`${BASE}${path}${toQuery(withToken(query))}`, { method: 'POST', body: JSON.stringify(body) });
+export const get = (path, query, opts) => request('GET', path, { query, ...opts });
+export const post = (path, body, opts) => request('POST', path, { body, ...opts });
+export const patch = (path, body, opts) => request('PATCH', path, { body, ...opts });
+export const del = (path, opts) => request('DELETE', path, opts);

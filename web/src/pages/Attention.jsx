@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/index.js';
 import { useAsync } from '../lib/hooks.js';
-import { useAuth } from '../context/Auth.jsx';
+import { useScope } from '../context/Scope.jsx';
 import { shortDate } from '../lib/format.js';
 import SampleBadge from '../components/SampleBadge.jsx';
 import { Icon } from '../components/Icons.jsx';
@@ -11,7 +11,7 @@ import { Scribble } from '../components/Decor.jsx';
 const PLAT = { leetcode: 'LeetCode', hackerrank: 'HackerRank' };
 
 export default function Attention() {
-  const { user } = useAuth();
+  const { single } = useScope();
   const nav = useNavigate();
   const [tab, setTab] = useState('broken');
   const { data, loading, error } = useAsync(() => api.attention({}), []);
@@ -28,7 +28,7 @@ export default function Attention() {
         <div>
           <h1>Needs attention</h1>
           <Scribble width={250} />
-          <p className="sub">{user.role === 'hod' ? user.deptName : 'All departments'}</p>
+          <p className="sub">{single ? single.name : 'All departments'}</p>
           <div style={{ marginTop: 8 }}><SampleBadge feature="attention" /></div>
         </div>
       </header>

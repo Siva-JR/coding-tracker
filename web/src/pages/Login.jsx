@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/Auth.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { Blobs } from '../components/Decor.jsx';
+import { DEMO_PASSWORD, isLiveMode } from '../api/index.js';
 
 export default function Login() {
   const { user, signIn } = useAuth();
@@ -25,7 +26,10 @@ export default function Login() {
       setWipe(true);
       setTimeout(() => nav('/', { replace: true }), 380);
     } catch (err) {
-      setError(err.message || 'Could not sign in.');
+      const wait = err.details?.retryAfterSeconds;
+      setError(err.code === 'LOCKED' && wait
+        ? `Too many failed attempts. Try again in ${Math.ceil(wait / 60)} minute${wait > 90 ? 's' : ''}.`
+        : err.message || 'Could not sign in.');
       setBusy(false);
     }
   };
@@ -63,7 +67,7 @@ export default function Login() {
                   <button className="btn" style={{ height: 50, fontSize: 16 }} disabled={busy}>{busy ? 'Signing in…' : 'Sign In'}</button>
                   <p className="roles">Principal <span className="dot-sep" />HOD<span className="dot-sep" />Admin</p>
                 </form>
-                <p className="demo">Demo data. Try <code>admin</code>, <code>principal</code> or <code>hod.cse</code> with password <code>demo123</code>.</p>
+                {!isLiveMode && <p className="demo">Demo data. Try <code>admin</code>, <code>principal</code> or <code>hod.it</code> with password <code>{DEMO_PASSWORD}</code>.</p>}
               </div>
             </div>
           </div>

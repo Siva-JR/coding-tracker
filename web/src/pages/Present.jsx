@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/index.js';
-import { useAuth } from '../context/Auth.jsx';
+import { useScope } from '../context/Scope.jsx';
 import { num } from '../lib/format.js';
 import { Icon } from '../components/Icons.jsx';
 
@@ -9,7 +9,7 @@ const SLIDE_MS = 12000;
 
 /** Auto-rotating Top 10 for a lobby screen or a review meeting. */
 export default function Present() {
-  const { user } = useAuth();
+  const { ready, departments, multi } = useScope();
   const nav = useNavigate();
   const [slides, setSlides] = useState([]);
   const [i, setI] = useState(0);
@@ -17,11 +17,12 @@ export default function Present() {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    if (!ready) return undefined;
     let live = true;
     (async () => {
-      const depts = await api.departments();
+      const depts = departments;
       const plan = [];
-      if (user.role !== 'hod') {
+      if (multi) {
         plan.push({ title: 'Top 10 · LeetCode', sub: 'Whole college', platform: 'leetcode' });
         plan.push({ title: 'Top 10 · HackerRank', sub: 'Whole college', platform: 'hackerrank' });
       }
@@ -35,7 +36,8 @@ export default function Present() {
       if (live) setSlides(loaded);
     })().catch(() => {});
     return () => { live = false; };
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   const exit = () => {
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
