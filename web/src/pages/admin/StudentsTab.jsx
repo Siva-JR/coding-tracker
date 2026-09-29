@@ -8,6 +8,7 @@ import { parseProfileUrl } from '../../lib/profileUrl.js';
 import { checkGithubUrl, githubHandle } from '../../lib/github.js';
 import { shortDate } from '../../lib/format.js';
 import { ErrorBox, Modal, platformName } from './shared.jsx';
+import RefreshAll from './RefreshAll.jsx';
 
 function AccountCell({ account }) {
   if (!account) return <span className="hint">not linked</span>;
@@ -100,7 +101,8 @@ export default function StudentsTab() {
     <section className="card">
       <div className="card-head">
         <h2><Icon name="users" /> All students {data && <span className="chip">{data.total}</span>}</h2>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <RefreshAll onDone={reload} />
           <select className="input" style={{ width: 'auto', height: 40 }} value={deptId} onChange={(e) => { setDeptId(e.target.value); setPage(1); }} aria-label="Filter by department">
             <option value="">All departments</option>
             {departments.map((d) => <option key={d.id} value={d.id}>{d.code}</option>)}

@@ -10,15 +10,26 @@ import { useScope } from '../../context/Scope.jsx';
 import { parseProfileUrl } from '../../lib/profileUrl.js';
 import { githubHandle } from '../../lib/github.js';
 import { num } from '../../lib/format.js';
+import ScrapeProgress from '../../components/ScrapeProgress.jsx';
+import { newTally, retryFailed, scrapeSequentially } from '../../lib/scrape.js';
 import { ErrorBox, platformName } from './shared.jsx';
 
 const VALIDATE_CHUNK = 10;   // server limit per validate call
-const IMPORT_CHUNK = 200;    // server limit per import call
+const IMPORT_STEP = 10;      // students created per call; each is fetched right after, so progress is steady (server limit is 200)
 const RETRIES = 3;           // extra attempts for a call that fails because of the connection
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // A dropped connection, a timeout or a server error is worth retrying; a 4xx is not.
 const isTransient = (err) => err?.status === 0 || err?.status === 408 || err?.status >= 500;
+
+async function withRetry(fn) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fn(); } catch (err) {
+      if (!isTransient(err) || attempt >= RETRIES) throw err;
+      await sleep(1500 * (attempt + 1));
+    }
+  }
+}
 
 export default function ImportCsv() {
   const toast = useToast();
@@ -36,6 +47,9 @@ export default function ImportCsv() {
   const [stopped, setStopped] = useState(null);  // why checking stopped early, shown beside the progress line
   const [notice, setNotice] = useState('');
   const [importing, setImporting] = useState(false);
+  const [run, setRun] = useState(null);         // progress of the import + fetch run
+  const [runDone, setRunDone] = useState(false);
+  const stopImport = useRef(false);
   const [summary, setSummary] = useState(null);
 
   const callValidate = useCallback(async (chunk) => {
@@ -129,7 +143,7 @@ export default function ImportCsv() {
   };
 
   const load = async (file) => {
-    setProblem(null); setStopped(null); setSummary(null); setResults({}); setSetup(null); setReadInfo('');
+    setProblem(null); setStopped(null); setSummary(null); setResults({}); setSetup(null); setReadInfo(''); setRun(null); setRunDone(false);
     if (!file) return;
     if (/\.xlsx$/i.test(file.name)) { setRows([]); await loadSheet(file); return; }
     if (/\.(xls|ods|numbers)$/i.test(file.name)) { setProblem('Save or download the sheet as “Microsoft Excel (.xlsx)” and upload that.'); return; }
@@ -159,26 +173,37 @@ export default function ImportCsv() {
     return () => window.removeEventListener('online', onOnline);
   }, [stopped, checking, remaining, validate]);
 
+  // Creates students a few at a time and fetches each one's numbers straight after, one student at a
+  // time, so nobody is left "waiting for first scrape". The nightly job then only updates them.
   const doImport = async () => {
-    setImporting(true); setProblem(null);
+    setImporting(true); setProblem(null); setSummary(null); stopImport.current = false;
+    const queue = [...good];
+    const t = newTally(queue.length);
+    setRun({ ...t }); setRunDone(false);
+    const opts = { onStep: (x) => setRun({ ...x }), shouldStop: () => stopImport.current };
+    const created = [];
+    const skipped = [];
+    const failedStudents = [];
     try {
-      const created = [];
-      const skipped = [];
-      for (let i = 0; i < good.length; i += IMPORT_CHUNK) {
-        const chunk = good.slice(i, i + IMPORT_CHUNK);
-        const out = await api.admin.importRows(chunk.map(apiRow));
-        out.created.forEach((c) => created.push(chunk[c.index].key));
-        out.skipped.forEach((s) => skipped.push({ key: chunk[s.index].key, reason: s.reason }));
+      for (let i = 0; i < queue.length && !stopImport.current && !t.aborted; i += IMPORT_STEP) {
+        const chunk = queue.slice(i, i + IMPORT_STEP);
+        t.current = 'saving the next students…'; setRun({ ...t });
+        const out = await withRetry(() => api.admin.importRows(chunk.map(apiRow)));
+        out.skipped.forEach((sk) => { skipped.push({ key: chunk[sk.index].key, reason: sk.reason }); t.done++; t.skipped++; });
+        const students = out.created.map((c) => { created.push(chunk[c.index].key); return { id: c.studentId, name: chunk[c.index].name }; });
+        failedStudents.push(...await scrapeSequentially(students, t, opts));
       }
-      setSummary({ created: created.length, skipped: skipped.length });
-      setRows((rs) => rs.filter((r) => !created.includes(r.key)));
-      setResults((cur) => {
-        const n = { ...cur };
-        skipped.forEach((s) => { n[s.key] = { ok: false, errors: [s.reason], warnings: [], accounts: [] }; });
-        return n;
-      });
-      toast(`${created.length} student${created.length === 1 ? '' : 's'} imported`);
+      await retryFailed(failedStudents, t, opts);
     } catch (err) { setProblem(err); }
+    t.current = ''; setRun({ ...t }); setRunDone(true);
+    setSummary({ created: created.length, skipped: skipped.length, tally: { ...t } });
+    setRows((rs) => rs.filter((r) => !created.includes(r.key)));
+    setResults((cur) => {
+      const n = { ...cur };
+      skipped.forEach((sk) => { n[sk.key] = { ok: false, errors: [sk.reason], warnings: [], accounts: [] }; });
+      return n;
+    });
+    toast(`${created.length} student${created.length === 1 ? '' : 's'} imported`);
     setImporting(false);
   };
 
@@ -242,10 +267,24 @@ export default function ImportCsv() {
         <input ref={fileRef} type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(e) => { load(e.target.files[0]); e.target.value = ''; }} />
       </div>
       <ErrorBox err={typeof problem === 'string' ? [problem] : problem} style={{ marginTop: 14 }} />
-      {summary && (
+      {run && (
+        <div className="setup" style={{ marginTop: 14 }}>
+          <ScrapeProgress
+            tally={run}
+            label="Importing and fetching numbers"
+            finished={runDone}
+            stopNote={!runDone ? 'Each student is saved and their LeetCode and HackerRank numbers are fetched before the next one starts. Keep this page open.' : null}
+          />
+          {!runDone && <div><button className="btn ghost sm" onClick={() => { stopImport.current = true; }}>Stop after this student</button></div>}
+        </div>
+      )}
+      {summary && runDone && (
         <div className="alert ok" role="status" style={{ marginTop: 14 }}>
           <Icon name="check" />
-          <span>{summary.created} imported{summary.skipped > 0 && `, ${summary.skipped} skipped (see below)`}. Their numbers appear after the next scrape window; open Students and press Refresh to fetch one now.</span>
+          <span>
+            {summary.created} imported{summary.skipped > 0 && `, ${summary.skipped} skipped (see below)`}.
+            {' '}{summary.tally.fetched} have their numbers now{summary.tally.notFound > 0 ? `, ${summary.tally.notFound} have a profile that was not found (see Needs attention)` : ''}{summary.tally.failed > 0 ? `, ${summary.tally.failed} could not be reached; use Refresh all in Students to try them again` : ''}.
+          </span>
         </div>
       )}
 
