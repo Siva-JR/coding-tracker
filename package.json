@@ -10,6 +10,7 @@
     "start": "node --env-file=.env api/server.js",
     "migrate": "node --env-file=.env scripts/migrate.js",
     "seed": "node --env-file=.env scripts/seed.js",
+    "dev:api": "node scripts/dev-live-api.mjs",
     "scrape:cli": "node scraper/cli.js",
     "test": "node --test --test-concurrency=1 tests/",
     "add-student": "node --env-file=.env scripts/add-student.js"
