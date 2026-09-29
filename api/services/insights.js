@@ -296,14 +296,14 @@ export async function getDepartmentOverview(db, { departments, grants = null, no
 export async function getStudentDetail(db, id, { now = new Date() }) {
   const today = istDate(now);
   const { rows: [st] } = await db.query(
-    `select st.id, st.name, st.roll_no, st.dept_id, d.code as dept_code, d.name as dept_name, st.batch_year
+    `select st.id, st.name, st.roll_no, st.dept_id, d.code as dept_code, d.name as dept_name, st.batch_year, st.github_url
      from students st join departments d on d.id = st.dept_id where st.id = $1`,
     [id],
   );
   if (!st) return null;
   const student = {
     id: st.id, name: st.name, rollNo: st.roll_no, deptId: st.dept_id, deptCode: st.dept_code, deptName: st.dept_name,
-    batchYear: st.batch_year, yearOfStudy: yearOfStudy(st.batch_year, now),
+    batchYear: st.batch_year, yearOfStudy: yearOfStudy(st.batch_year, now), githubUrl: st.github_url,
   };
   const [accounts, facts, hist] = await Promise.all([
     loadAccounts(db, [id]), loadFacts(db, [id], today, [7]),
