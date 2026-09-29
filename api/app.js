@@ -1,47 +1,12 @@
 import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { getLeaderboard } from './services/leaderboard.js';
+import cookieParser from 'cookie-parser';
+import { HttpError } from './http.js';
+import { cors, requireJson } from './middleware/auth.js';
+import { authRoutes } from './routes/auth.js';
+import { readRoutes } from './routes/read.js';
+import { adminRoutes } from './routes/admin.js';
 import { runTick } from './services/tick.js';
-
-const PLATFORMS = ['leetcode', 'hackerrank'];
-const SORTS = ['solved', 'rank'];
-
-class HttpError extends Error {
-  constructor(status, code, message) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
-const bad = (message) => new HttpError(400, 'BAD_REQUEST', message);
-
-function parseInteger(value, name, { min, max }) {
-  if (!/^\d+$/.test(String(value))) throw bad(`${name} must be a whole number`);
-  const n = Number(value);
-  if (n < min || n > max) throw bad(`${name} must be between ${min} and ${max}`);
-  return n;
-}
-
-function parseLeaderboardQuery(query) {
-  const platform = query.platform;
-  if (!PLATFORMS.includes(platform)) throw bad(`platform must be one of: ${PLATFORMS.join(', ')}`);
-
-  const sort = query.sort ?? 'solved';
-  if (!SORTS.includes(sort)) throw bad(`sort must be one of: ${SORTS.join(', ')}`);
-  if (platform === 'hackerrank' && sort === 'rank') throw bad('HackerRank can only be sorted by problems solved');
-
-  const year = query.year ?? 'all';
-  if (year !== 'all') parseInteger(year, 'year', { min: 1, max: 4 });
-
-  return {
-    platform,
-    sort,
-    year: year === 'all' ? 'all' : Number(year),
-    deptId: query.deptId === undefined ? null : parseInteger(query.deptId, 'deptId', { min: 1, max: 2147483647 }),
-    limit: query.limit === undefined ? 20 : parseInteger(query.limit, 'limit', { min: 1, max: 100 }),
-  };
-}
 
 function secretMatches(provided, expected) {
   const a = Buffer.from(String(provided ?? ''));
@@ -49,21 +14,32 @@ function secretMatches(provided, expected) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function createApp({ db, scrapeSecret, now = () => new Date(), tickOptions = {}, log = console.log }) {
+export function createApp({
+  db,
+  sessionSecret,
+  scrapeSecret,
+  cookie = {},
+  corsOrigins = [],
+  now = () => new Date(),
+  tickOptions = {},
+  log = console.log,
+}) {
+  if (!sessionSecret) throw new Error('sessionSecret is required');
+
+  const cookieOptions = { httpOnly: true, secure: cookie.secure ?? false, sameSite: cookie.sameSite ?? 'lax', path: '/' };
+
   const app = express();
   app.disable('x-powered-by');
+  app.use(cors(corsOrigins));
+  app.use(cookieParser());
   app.use(express.json({ limit: '100kb' }));
 
   app.get('/health', (req, res) => res.json({ ok: true }));
 
-  // TEMPORARY: open until staff auth is added. Do not expose real student data publicly before then.
-  app.get('/api/leaderboard', async (req, res, next) => {
-    try {
-      res.json(await getLeaderboard(db, { ...parseLeaderboardQuery(req.query), now: now() }));
-    } catch (err) {
-      next(err);
-    }
-  });
+  app.use('/api', requireJson);
+  app.use('/api/auth', authRoutes({ db, sessionSecret, cookieOptions, now }));
+  app.use('/api/admin', adminRoutes({ db, sessionSecret }));
+  app.use('/api', readRoutes({ db, sessionSecret, now }));
 
   app.post('/internal/scrape/tick', async (req, res, next) => {
     try {
@@ -81,8 +57,9 @@ export function createApp({ db, scrapeSecret, now = () => new Date(), tickOption
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    if (err instanceof HttpError) return res.status(err.status).json({ error: { code: err.code, message: err.message } });
+    if (err instanceof HttpError) return res.status(err.status).json({ error: { code: err.code, message: err.message, ...err.details } });
     if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } });
+    if (err?.type === 'entity.too.large') return res.status(413).json({ error: { code: 'TOO_LARGE', message: 'Request body is too large' } });
     console.error(err);
     return res.status(500).json({ error: { code: 'INTERNAL', message: 'Something went wrong' } });
   });

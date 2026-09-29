@@ -1,43 +1,40 @@
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { startTestDb } from './helpers/testdb.js';
-import { createApp } from '../api/app.js';
+import { startTestApp, createStaff, SCRAPE_SECRET as SECRET, NOW } from './helpers/app.js';
 import { addStudent, ValidationError } from '../api/services/students.js';
 
-const NOW = new Date('2026-09-30T06:00:00Z'); // outside a scrape window; year 3 == batch 2028
 const W1 = new Date('2026-09-29T19:00:00Z');
-const SECRET = 'test-secret';
 
 let t;
-let server;
-let base;
-let currentNow = NOW;
+let app;
+let admin;
 
 before(async () => {
   t = await startTestDb();
-  const app = createApp({
-    db: t.db,
-    scrapeSecret: SECRET,
-    now: () => currentNow,
-    tickOptions: { sleep: async () => {}, fetchProfile: async () => ({ status: 'ok', data: { solvedTotal: 99, solvedEasy: 1, solvedMedium: 1, solvedHard: 1, globalRank: 5, hrStars: null } }) },
-    log: () => {},
+  app = await startTestApp(t.db, {
+    tickOptions: {
+      sleep: async () => {},
+      fetchProfile: async () => ({ status: 'ok', data: { solvedTotal: 99, solvedEasy: 1, solvedMedium: 1, solvedHard: 1, globalRank: 5, hrStars: null } }),
+    },
   });
-  await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
-  base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
-  await new Promise((resolve) => server.close(resolve));
+  await app.stop();
   await t.stop();
 });
 beforeEach(async () => {
-  currentNow = NOW;
-  await t.db.query('truncate students, departments restart identity cascade');
+  app.clock.now = NOW;
+  await t.db.query('truncate students, departments, staff restart identity cascade');
   await t.db.query("insert into departments (name, code) values ('Computer Science', 'CSE'), ('Information Technology', 'IT')");
+  await createStaff(t.db, { username: 'admin', role: 'admin' });
+  admin = app.client();
+  await admin.login('admin');
 });
 
 const get = async (path) => {
-  const res = await fetch(base + path);
-  return { status: res.status, body: await res.json() };
+  const res = await admin.get(path);
+  return { status: res.status, body: res.body };
 };
 
 async function student({ roll, name, dept = 1, batch = 2028, lc, hr, lcSnap, hrSnap, lcState = 'active' }) {
@@ -56,6 +53,12 @@ async function student({ roll, name, dept = 1, batch = 2028, lc, hr, lcSnap, hrS
 }
 
 const lc = (...values) => ({ values });
+
+test('leaderboard and departments require login', async () => {
+  const anon = app.client();
+  assert.equal((await anon.get('/api/leaderboard?platform=leetcode')).status, 401);
+  assert.equal((await anon.get('/api/departments')).status, 401);
+});
 
 test('GET /health', async () => {
   assert.deepEqual(await get('/health'), { status: 200, body: { ok: true } });
@@ -140,7 +143,7 @@ test('hackerrank entries expose stars and problems solved only', async () => {
 });
 
 test('scrape tick requires the shared secret', async () => {
-  const post = (headers = {}) => fetch(`${base}/internal/scrape/tick`, { method: 'POST', headers });
+  const post = (headers = {}) => fetch(`${app.base}/internal/scrape/tick`, { method: 'POST', headers });
   assert.equal((await post()).status, 401);
   assert.equal((await post({ 'x-scrape-secret': 'wrong' })).status, 401);
   assert.equal((await post({ 'x-scrape-secret': SECRET + 'x' })).status, 401);
@@ -151,8 +154,8 @@ test('scrape tick requires the shared secret', async () => {
 
 test('scrape tick inside a window scrapes accounts and the leaderboard reflects it', async () => {
   await student({ roll: 'A', name: 'Ann', lc: 'ann' });
-  currentNow = W1;
-  const res = await fetch(`${base}/internal/scrape/tick`, { method: 'POST', headers: { 'x-scrape-secret': SECRET } });
+  app.clock.now = W1;
+  const res = await fetch(`${app.base}/internal/scrape/tick`, { method: 'POST', headers: { 'x-scrape-secret': SECRET } });
   assert.equal(res.status, 200);
   assert.equal((await res.json()).leetcode.ok, 1);
   const { body } = await get('/api/leaderboard?platform=leetcode');
@@ -161,18 +164,17 @@ test('scrape tick inside a window scrapes accounts and the leaderboard reflects 
 
 test('unknown routes and bad JSON return the error envelope', async () => {
   assert.deepEqual(await get('/nope'), { status: 404, body: { error: { code: 'NOT_FOUND', message: 'Route not found' } } });
-  const res = await fetch(`${base}/internal/scrape/tick`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{oops' });
+  const res = await fetch(`${app.base}/internal/scrape/tick`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{oops' });
   assert.equal(res.status, 400);
 });
 
 test('scrape tick refuses to run when no secret is configured', async () => {
-  const app = createApp({ db: t.db, scrapeSecret: undefined, log: () => {} });
-  const s = await new Promise((resolve) => { const x = app.listen(0, '127.0.0.1', () => resolve(x)); });
+  const bare = await startTestApp(t.db, { scrapeSecret: undefined });
   try {
-    const res = await fetch(`http://127.0.0.1:${s.address().port}/internal/scrape/tick`, { method: 'POST', headers: { 'x-scrape-secret': '' } });
+    const res = await fetch(`${bare.base}/internal/scrape/tick`, { method: 'POST', headers: { 'x-scrape-secret': '' } });
     assert.equal(res.status, 503);
   } finally {
-    await new Promise((resolve) => s.close(resolve));
+    await bare.stop();
   }
 });
 
