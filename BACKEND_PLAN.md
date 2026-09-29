@@ -6,74 +6,74 @@ Companion to `PRD.md`. Section 3 is the **API contract** the frontend builds aga
 - Node 20 / Express, deployed on Catalyst **AppSail** (30 s limit per request, instances spin down after ~5 min idle, so expect cold starts; no in-process schedulers like `node-cron`).
 - Scraping is driven by a **Catalyst Cron** that calls a protected AppSail endpoint (`POST /internal/scrape/tick`, header `X-Scrape-Secret`). The tick logic is a plain function (`runTick(budgetMs)`), so it can also run from a Cron Function (15 min limit) or an external runner if Catalyst's IPs turn out to be blocked (see §10).
 - Neon Postgres via `pg` with the **pooled** connection string; plain SQL migrations in `/migrations`.
-- `zod` for request validation, `bcryptjs` for password hashes, signed session cookie (JWT).
-- Env vars: `DATABASE_URL`, `SESSION_SECRET`, `SCRAPE_SECRET`.
+- `zod` for request validation, `bcryptjs` for password hashes, `jsonwebtoken` for the session cookie.
+- Env vars: `DATABASE_URL`, `SESSION_SECRET` (32+ chars), `SCRAPE_SECRET`, `SEED_PASSWORD`, `CORS_ORIGINS`, `COOKIE_SAMESITE`.
 
 ## 2. Auth and authorization
-- `POST /api/auth/login` checks username + bcrypt hash, sets an **httpOnly, Secure, SameSite=Lax** cookie (8 h expiry).
-- JWT payload: `{ sub, role, deptId, tokenVersion }`. `staff.token_version` is bumped on password reset or account disable, so old sessions die immediately.
-- Login lockout (no email means no other recovery path): 5 failed attempts per username locks it for 15 minutes; counters stored in DB.
-- Middleware chain on every protected route: `authenticate` → `requireRole(...)` → handler.
-- **Scope is server-derived.** For `hod`, `deptId` always comes from the session and any `deptId` query param is ignored. `institute` and `admin` may pass any `deptId`.
-- Permission matrix:
-
-| Route group | admin | institute | hod |
-|---|---|---|---|
-| Leaderboards, students (read), attention lists | all depts | all depts | own dept |
-| `/api/admin/*` (write) | yes | no | no |
+- **Two roles:** `admin` (sees everything, manages users, students and departments) and `viewer` (read-only). A viewer's access comes from **scopes**, not from a role name.
+- **Scope** = one grant of a department (or all) plus an optional year of study 1-4 (or all). A viewer has one or more scopes; the all/all scope means unrestricted. Examples: Principal and Vice Chairman = one all/all scope; a HOD = their department; a 2nd-year coordinator = department + year 2; two departments = two scopes.
+- **Year means year of study.** A "year 2" scope follows whoever is currently in 2nd year and moves up each June (batch year is derived, see the year helper below).
+- **Enforcement is server-side.** Requesting a department or year that no single scope covers returns `403`. Requests that name neither are allowed but filtered to the user's scopes, so a HOD's landing page is simply the leaderboard with no filters.
+- **Login:** username + password (bcrypt), no email. Usernames are lowercase and case-insensitive at login. 5 failed attempts lock the account for 15 minutes (`423`). Unknown user, wrong password and disabled account all return the same `401`.
+- **Session:** signed JWT in an httpOnly cookie named `session` (8 h). It carries `token_version`; password change, admin password reset, role change and disabling all bump it, so existing sessions die immediately.
+- **Forced password change:** accounts created or reset by an admin have `mustChangePassword: true`. Until they change it, every route except `me`, `logout` and `change-password` returns `403 PASSWORD_CHANGE_REQUIRED`. Seeded accounts do not have to change theirs.
+- **CSRF guard:** every non-GET request under `/api` must send `Content-Type: application/json` (send `{}` if there is no body), otherwise `415`. CORS allows only origins listed in `CORS_ORIGINS`, with credentials. Frontend requests must use `credentials: 'include'`.
+- **Cookie settings:** `SameSite=Lax` by default, `Secure` when `NODE_ENV=production`. If the frontend and API end up on different sites on Catalyst, set `COOKIE_SAMESITE=none` (HTTPS required). Verified at deploy time.
+- **Seeded accounts** (`npm run seed`, password from `SEED_PASSWORD`): `admin`, `principal`, `vice.chairman` (all departments), `hod.it` (IT). The seed is idempotent and never overwrites existing accounts.
+- **Last-admin protection:** the last active admin cannot be disabled or demoted (`409 LAST_ADMIN`), even by two admins acting at once.
 
 ## 3. API contract (v1)
-All JSON. Errors: `{ "error": { "code": "FORBIDDEN", "message": "..." } }` with status 400/401/403/404/409.
+All JSON. Errors: `{ "error": { "code", "message", ...extra } }`. Domain validation failures are `422 VALIDATION_FAILED` with `error.errors` listing every problem; malformed requests are `400 BAD_REQUEST`.
+
+`user` object: `{ id, username, displayTitle, role, mustChangePassword, scopes: [{ deptId, deptCode, deptName, year }] }` (`null` = all; admins have `scopes: []`). Admin views of a user also include `disabled`.
 
 ### Auth
-- `POST /api/auth/login` `{username, password}` → `{ user: {id, username, role, deptId, deptName, displayTitle} }`
+- `POST /api/auth/login` `{username, password}` → `{ user }` + cookie. Errors: `401 INVALID_CREDENTIALS`, `423 LOCKED` (`retryAfterSeconds`).
 - `POST /api/auth/logout` → `204`
-- `GET /api/auth/me` → `{ user }` or `401`
+- `GET /api/auth/me` → `{ user }` or `401 UNAUTHENTICATED`
+- `POST /api/auth/change-password` `{currentPassword, newPassword}` → `204` and a fresh cookie. Errors: `400 WRONG_PASSWORD`, `400 WEAK_PASSWORD` (min 8, max 72 bytes, not the username, not the same as current). Other sessions are signed out.
 
-### Reference
-- `GET /api/departments` → `[{id, name, code}]` (hod gets only their own)
+### Read (any logged-in user, scoped)
+- `GET /api/departments` → `[{id, name, code}]`, only departments the user can see.
+- `GET /api/leaderboard?platform=leetcode|hackerrank&sort=solved|rank&year=all|1|2|3|4&deptId=<id>&limit=20`
+  - Defaults: `sort=solved`, `year=all`, `limit=20` (max 100).
+  - `platform=hackerrank&sort=rank` → `400` (HackerRank sorts by problems only).
+  - Response: `{ platform, sort, year, deptId, asOf, entries: [{ position, studentId, name, rollNo, deptCode, batchYear, yearOfStudy, solved: {total, easy, medium, hard}, globalRank, stars, profileUrl }] }`
+  - LeetCode: easy/medium/hard and `globalRank` filled, `stars` null. HackerRank: `solved.total` is Problem Solving solved, `stars` filled, easy/medium/hard and `globalRank` null.
+  - `sort=rank` orders ascending, students with no rank last. Accounts marked broken are excluded.
 
-### Leaderboard (the landing pages)
-`GET /api/leaderboard?platform=leetcode|hackerrank&sort=solved|rank&year=all|1|2|3|4&deptId=<id>&limit=20`
-- Defaults: `sort=solved`, `year=all`, `limit=20`, no `deptId` = whole college (institute/admin only).
-- `platform=hackerrank` with `sort=rank` → `400` (HackerRank sorts by problems only).
-- Response:
-```json
-{
-  "platform": "leetcode", "sort": "solved", "year": "all", "deptId": null,
-  "asOf": "2026-09-29",
-  "entries": [
-    { "position": 1, "studentId": 12, "name": "…", "rollNo": "…", "deptCode": "CSE",
-      "batchYear": 2028, "yearOfStudy": 3,
-      "solved": {"total": 414, "easy": 319, "medium": 90, "hard": 5},
-      "globalRank": 302658, "stars": null, "profileUrl": "https://leetcode.com/u/…" }
-  ]
-}
-```
-- For HackerRank: `solved.total` is Problem Solving solved, `stars` is filled, `globalRank` is null, easy/medium/hard are null.
-- `sort=rank` orders ascending by `globalRank`; students with no rank go last.
+### Admin: users (`role: admin` only)
+- `GET /api/admin/users` → `[user + disabled]`
+- `POST /api/admin/users` `{username, displayTitle?, role, password?, scopes: [{deptId, year}]}` → `201 { user, temporaryPassword? }`. `temporaryPassword` is returned once, only when the server generated it. Username 3-32 chars `[a-z0-9._-]`; viewers need at least one scope; admins must have none; `409 USERNAME_TAKEN`.
+- `PATCH /api/admin/users/:id` `{displayTitle?, role?, scopes?, disabled?}` → user. Changing role to `viewer` requires `scopes`; changing to `admin` clears them.
+- `POST /api/admin/users/:id/reset-password` `{password?}` → `{ temporaryPassword? }`. Forces a change at next login, signs the user out everywhere, clears any lockout.
+- `POST /api/admin/departments` `{name, code}` → `201` (code upper-cased, `409 DEPARTMENT_EXISTS`).
 
-### Students (read)
-- `GET /api/students?deptId=&year=&q=&page=&pageSize=` → paginated list with latest stats per platform.
-- `GET /api/students/:id` → profile, both platform accounts, latest stats, `history: [{date, platform, solvedTotal, globalRank}]`.
-- `GET /api/attention?deptId=` → `{ broken: [...], stale: [...] }` (broken = last fetch `not_found`/`error`; stale = no successful fetch in 3 days).
+### Admin: students (`role: admin` only)
+Student fields: `name, rollNo, deptId | deptCode, batchYear, leetcodeUrl, hackerrankUrl` (numbers may arrive as strings from CSV). At least one profile URL is required.
+- `POST /api/admin/students` → `201 { studentId, student, accounts: [{platform, username, verified: ok|unverified, stats?}], warnings }`. Profiles are verified live: a nonexistent profile is `422`, a temporary failure is accepted with a warning, and the first snapshot is stored immediately so the student appears on the leaderboard at once. `409 ROLL_NUMBER_EXISTS`.
+- `GET /api/admin/students?deptId&batchYear&q&page&pageSize` → `{ items: [student], page, pageSize, total }`. `student` = `{ id, rollNo, name, deptId, deptCode, batchYear, yearOfStudy, accounts: [{platform, username, profileUrl, state: active|broken, attempts, lastOkAt, lastError}] }` (LeetCode first). `q` searches name and roll number.
+- `PATCH /api/admin/students/:id` (any subset of the fields) → `{ student, warnings }`. Changing a URL re-verifies it, deletes the old profile's snapshots and stores a fresh one; an empty string or `null` removes a profile (a student keeps at least one). Re-submitting a broken profile's URL re-verifies and reactivates it.
+- `DELETE /api/admin/students/:id` → `204`
+- `POST /api/admin/students/:id/refresh` → `{ student, results: [{platform, username, status: ok|not_found|error, stats?, error?}] }`. A missing profile is marked broken; a temporary failure changes nothing.
+- **CSV import is two steps, and the frontend parses the CSV.**
+  - `POST /api/admin/students/validate` `{rows: [≤10]}` → `{ results: [{index, checked, ok, errors, warnings, accounts}] }`. Nothing is written. Rows the time budget could not reach come back `checked: false`; resend them. Duplicate roll numbers within the file and already in the database are flagged.
+  - `POST /api/admin/students/import` `{rows: [≤200]}` → `{ created: [{index, studentId, rollNo}], skipped: [{index, rollNo, reason}] }`. Each row is independent. It does not fetch profiles; the accounts are picked up by the next scrape window (or use `refresh`).
 
-### Admin (role `admin` only)
-- `POST /api/admin/students` `{name, rollNo, deptId, batchYear, leetcodeUrl, hackerrankUrl}` → validates URLs live, creates student, returns the fetched stats as proof. `409` on duplicate roll number.
-- `PATCH /api/admin/students/:id`, `DELETE /api/admin/students/:id`. Changing a profile URL resets that account's scrape state to `active`.
-- `POST /api/admin/students/:id/refresh` → scrapes that student's LeetCode and HackerRank profiles right now (one fetch each, fits the 30 s limit) and returns the fresh stats.
-- `POST /api/admin/students/validate` `{ rows: [...≤10] }` → per-row `{ok, errors[], leetcode: {username, solved}, hackerrank: {...}}`. **The frontend parses the CSV and sends it in chunks of ≤10 rows** so each call stays under the 30 s function limit.
-- `POST /api/admin/students/import` `{ rows: [...] }` → inserts the validated rows in one transaction, returns `{created, skipped: [{rollNo, reason}]}`.
-- `GET|POST /api/admin/staff`, `PATCH /api/admin/staff/:id`, `POST /api/admin/staff/:id/reset-password` → returns a generated temporary password once.
+### Scrape trigger (not for browsers)
+- `POST /internal/scrape/tick` with header `X-Scrape-Secret`. Called by Catalyst Cron.
 
-### Derived "year of study" (single implementation, used by leaderboard and student list)
+### Derived "year of study" (single implementation, used by leaderboard, scopes and student lists)
 Academic year starts in June. `endYear = month >= 6 ? thisYear + 1 : thisYear`; `yearOfStudy = 4 - (batchYear - endYear)`. Example (Sept 2026): batch 2028 → 3rd year, 2029 → 2nd, 2030 → 1st, 2027 → 4th. Assumes 4-year programmes.
 
 ## 4. Schema (migrations)
 ```
 departments(id, name, code unique)
-staff(id, username unique, password_hash, role, dept_id null, display_title,
-      token_version default 0, failed_attempts default 0, locked_until null, disabled default false)
+staff(id, username unique lowercase, password_hash, role,        -- admin | viewer
+      display_title, must_change_password, token_version, failed_attempts,
+      locked_until, disabled, created_at)
+staff_scopes(id, staff_id, dept_id null,                        -- null = all departments
+             year null 1-4)                                     -- null = all years; unique per staff
 students(id, roll_no unique, name, dept_id, batch_year, created_at)
 platform_accounts(id, student_id, platform, username,           -- one row per URL = one unit of scrape work
                   state,                                        -- active | broken (profile not found)

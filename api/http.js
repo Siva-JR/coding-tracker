@@ -7,6 +7,14 @@ export class HttpError extends Error {
   }
 }
 
+// Domain validation failure (as opposed to a malformed request): 422 by default, with every problem listed.
+export class ValidationError extends HttpError {
+  constructor(errors, { status = 422, code = 'VALIDATION_FAILED' } = {}) {
+    super(status, code, errors.join('; '), { errors });
+    this.errors = errors;
+  }
+}
+
 export const bad = (message) => new HttpError(400, 'BAD_REQUEST', message);
 
 export const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);

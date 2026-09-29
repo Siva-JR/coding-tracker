@@ -183,7 +183,7 @@ test('addStudent: creates the student and accounts from profile URLs', async () 
     name: ' Siva ', rollNo: '21CS001', deptCode: 'cse', batchYear: '2028',
     leetcodeUrl: 'https://leetcode.com/u/2mNZWXqhCg/', hackerrankUrl: 'https://www.hackerrank.com/profile/siva_hr',
   });
-  assert.deepEqual(result.accounts, [{ platform: 'leetcode', username: '2mNZWXqhCg' }, { platform: 'hackerrank', username: 'siva_hr' }]);
+  assert.deepEqual(result.accounts, [{ platform: 'leetcode', username: '2mNZWXqhCg', verified: 'skipped' }, { platform: 'hackerrank', username: 'siva_hr', verified: 'skipped' }]);
   const { rows } = await t.db.query('select s.name, s.dept_id, pa.platform, pa.username from students s join platform_accounts pa on pa.student_id = s.id order by pa.platform');
   assert.equal(rows.length, 2);
   assert.equal(rows[0].name, 'Siva');

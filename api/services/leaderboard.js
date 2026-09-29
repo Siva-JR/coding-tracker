@@ -5,7 +5,7 @@ const ORDER = {
   rank: 'l.global_rank asc nulls last, l.solved_total desc, st.name, st.id',
 };
 
-const PROFILE_URL = {
+export const PROFILE_URL = {
   leetcode: (u) => `https://leetcode.com/u/${u}/`,
   hackerrank: (u) => `https://www.hackerrank.com/profile/${u}`,
 };

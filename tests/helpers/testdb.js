@@ -26,11 +26,13 @@ export async function startTestDb() {
   await server.start();
   await server.createDatabase('test');
 
-  const db = createPool(`postgres://postgres:postgres@127.0.0.1:${port}/test`, { max: 10 });
+  const url = `postgres://postgres:postgres@127.0.0.1:${port}/test`;
+  const db = createPool(url, { max: 10 });
   await migrate(db);
 
   return {
     db,
+    url,
     async stop() {
       await db.end();
       await server.stop();

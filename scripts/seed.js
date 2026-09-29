@@ -1,21 +1,19 @@
 import { createPool } from '../api/db.js';
 import { migrate } from '../api/migrate.js';
+import { seedDefaults } from '../api/services/seed.js';
 
-// Development placeholders. Replace with the real department list before production.
-const DEPARTMENTS = [
-  ['Computer Science and Engineering', 'CSE'],
-  ['Information Technology', 'IT'],
-  ['Electronics and Communication Engineering', 'ECE'],
-];
+const password = process.env.SEED_PASSWORD;
+if (!password) {
+  console.error('Set SEED_PASSWORD in .env (the initial password for the seeded accounts)');
+  process.exit(1);
+}
 
 const db = createPool();
 try {
   await migrate(db);
-  for (const [name, code] of DEPARTMENTS) {
-    await db.query('insert into departments (name, code) values ($1, $2) on conflict (code) do nothing', [name, code]);
-  }
-  const { rows } = await db.query('select code, name from departments order by id');
-  console.log('Departments:', rows.map((r) => r.code).join(', '));
+  const { created, existing } = await seedDefaults(db, { password });
+  console.log(`Created accounts: ${created.join(', ') || 'none'}`);
+  if (existing.length) console.log(`Already existed (unchanged): ${existing.join(', ')}`);
 } finally {
   await db.end();
 }

@@ -7,6 +7,7 @@ import { authRoutes } from './routes/auth.js';
 import { readRoutes } from './routes/read.js';
 import { adminRoutes } from './routes/admin.js';
 import { runTick } from './services/tick.js';
+import { fetchProfile as defaultFetchProfile } from '../scraper/index.js';
 
 function secretMatches(provided, expected) {
   const a = Buffer.from(String(provided ?? ''));
@@ -22,6 +23,7 @@ export function createApp({
   corsOrigins = [],
   now = () => new Date(),
   tickOptions = {},
+  fetchProfile = defaultFetchProfile,
   log = console.log,
 }) {
   if (!sessionSecret) throw new Error('sessionSecret is required');
@@ -38,14 +40,14 @@ export function createApp({
 
   app.use('/api', requireJson);
   app.use('/api/auth', authRoutes({ db, sessionSecret, cookieOptions, now }));
-  app.use('/api/admin', adminRoutes({ db, sessionSecret }));
+  app.use('/api/admin', adminRoutes({ db, sessionSecret, fetchProfile, now }));
   app.use('/api', readRoutes({ db, sessionSecret, now }));
 
   app.post('/internal/scrape/tick', async (req, res, next) => {
     try {
       if (!scrapeSecret) throw new HttpError(503, 'NOT_CONFIGURED', 'Scrape secret is not configured');
       if (!secretMatches(req.get('x-scrape-secret'), scrapeSecret)) throw new HttpError(401, 'UNAUTHORIZED', 'Invalid scrape secret');
-      const summary = await runTick({ db, now, ...tickOptions });
+      const summary = await runTick({ db, now, fetchProfile, ...tickOptions });
       log(JSON.stringify({ event: 'scrape_tick', ...summary }));
       res.json(summary);
     } catch (err) {
