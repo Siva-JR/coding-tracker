@@ -3,7 +3,7 @@ import { HttpError, asyncRoute, bad, parseInteger } from '../http.js';
 import { authenticate } from '../middleware/auth.js';
 import { getLeaderboard } from '../services/leaderboard.js';
 import { resolveAccess, canRequest, grantsParam, canSeeDepartment, coversStudent } from '../services/scopes.js';
-import { getStats, getActivity, getAttention, getDepartmentOverview, getStudentDetail } from '../services/insights.js';
+import { getStats, getActivity, getAttention, getDepartmentOverview, getStudentDetail, listGithubLinks } from '../services/insights.js';
 
 const PLATFORMS = ['leetcode', 'hackerrank'];
 const SORTS = ['solved', 'rank'];
@@ -46,6 +46,22 @@ export function readRoutes({ db, sessionSecret, now }) {
     if (!canRequest(access, { deptId }, now())) throw new HttpError(403, 'FORBIDDEN', 'You do not have access to that department');
     return { deptId, grants: grantsParam(access), now: now() };
   };
+
+  // GitHub tab: who has shared a GitHub link (scoped like the leaderboard). Links are listed, never fetched.
+  router.get('/github', auth, asyncRoute(async (req, res) => {
+    const year = req.query.year ?? 'all';
+    if (year !== 'all') parseInteger(year, 'year', { min: 1, max: 4 });
+    const deptId = req.query.deptId === undefined ? null : parseInteger(req.query.deptId, 'deptId', { min: 1, max: 2147483647 });
+    const access = resolveAccess(req.user, now());
+    if (!canRequest(access, { deptId, year: year === 'all' ? 'all' : Number(year) }, now())) throw new HttpError(403, 'FORBIDDEN', 'You do not have access to that department or year');
+    const q = typeof req.query.q === 'string' && req.query.q.trim() ? req.query.q.trim().slice(0, 100) : null;
+    res.json(await listGithubLinks(db, {
+      deptId, year: year === 'all' ? 'all' : Number(year), q,
+      limit: req.query.limit === undefined ? 20 : parseInteger(req.query.limit, 'limit', { min: 1, max: 100 }),
+      offset: req.query.offset === undefined ? 0 : parseInteger(req.query.offset, 'offset', { min: 0, max: 100000 }),
+      grants: grantsParam(access), now: now(),
+    }));
+  }));
 
   router.get('/stats', auth, asyncRoute(async (req, res) => res.json(await getStats(db, scoped(req)))));
 

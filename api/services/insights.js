@@ -332,3 +332,31 @@ export async function getStudentDetail(db, id, { now = new Date() }) {
   const history = [...byDate.values()];
   return { ...student, leetcode: platform('leetcode'), hackerrank: platform('hackerrank'), history, firstSnapshot: history[0]?.date ?? null };
 }
+
+// Students in scope who have a GitHub link, for the GitHub tab. It only lists the links people entered;
+// nothing is fetched from GitHub. `scopeTotal` is everyone in scope, so the page can say "12 of 40".
+export async function listGithubLinks(db, { deptId = null, year = 'all', q = null, limit = 20, offset = 0, grants = null, now = new Date() }) {
+  const batchYear = year === 'all' || year == null ? null : batchYearFor(Number(year), now);
+  const pattern = q ? `%${q.replace(/[\\%_]/g, '\\$&')}%` : null;
+  const scope = `($1::int is null or st.dept_id = $1) and ($2::int is null or st.batch_year = $2) and ${GRANT_FILTER}`;
+  const { rows } = await db.query(
+    `select st.id, st.name, st.roll_no, d.code as dept_code, st.batch_year, st.github_url, count(*) over () as matched
+     from students st join departments d on d.id = st.dept_id
+     where st.github_url is not null and ${scope}
+       and ($4::text is null or st.name ilike $4 or st.roll_no ilike $4)
+     order by st.name, st.id
+     limit $5 offset $6`,
+    [deptId, batchYear, grants, pattern, limit, offset],
+  );
+  const { rows: [{ n }] } = await db.query(`select count(*)::int as n from students st where ${scope}`, [deptId, batchYear, grants]);
+  return {
+    total: rows.length ? Number(rows[0].matched) : 0,
+    scopeTotal: n,
+    limit,
+    offset,
+    items: rows.map((r) => ({
+      studentId: r.id, name: r.name, rollNo: r.roll_no, deptCode: r.dept_code,
+      batchYear: r.batch_year, yearOfStudy: yearOfStudy(r.batch_year, now), githubUrl: r.github_url,
+    })),
+  };
+}

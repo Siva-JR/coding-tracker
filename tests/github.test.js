@@ -117,3 +117,38 @@ test('student detail includes the github link for viewers who can see the studen
   assert.equal(res.status, 200);
   assert.equal(res.body.githubUrl, 'https://github.com/asha-dev');
 });
+
+test('the GitHub tab lists only students with a link, scoped, searchable and paged', async () => {
+  await t.db.query("insert into departments (name, code) values ('Information Technology', 'IT')");
+  const mk = async (name, roll, deptId, batch, gh) => (await admin.post('/api/admin/students', base({ name, rollNo: roll, deptId, batchYear: batch, leetcodeUrl: `https://leetcode.com/u/${roll}/`, ...(gh ? { githubUrl: gh } : {}) }))).status;
+  assert.equal(await mk('Ann', 'A1', 1, 2028, 'https://github.com/ann'), 201);
+  assert.equal(await mk('Bob', 'B1', 1, 2029, 'https://github.com/bob'), 201);
+  assert.equal(await mk('Cat', 'C1', 1, 2028), 201);                                     // no link
+  assert.equal(await mk('Dan', 'D1', 2, 2028, 'https://github.com/dan'), 201);           // other department
+  await createStaff(t.db, { username: 'hod.it', scopes: [{ deptId: 2 }] });
+  await createStaff(t.db, { username: 'coord', scopes: [{ deptId: 1, year: 3 }] });       // year 3 = batch 2028 at NOW
+
+  const all = await admin.get('/api/github');
+  assert.equal(all.status, 200);
+  assert.deepEqual(all.body.items.map((i) => i.name), ['Ann', 'Bob', 'Dan']);
+  assert.equal(all.body.total, 3);
+  assert.equal(all.body.scopeTotal, 4, 'scopeTotal counts everyone in scope, with or without a link');
+  assert.deepEqual(Object.keys(all.body.items[0]).sort(), ['batchYear', 'deptCode', 'githubUrl', 'name', 'rollNo', 'studentId', 'yearOfStudy']);
+
+  assert.deepEqual((await admin.get('/api/github?deptId=1&year=3')).body.items.map((i) => i.name), ['Ann']);
+  assert.deepEqual((await admin.get('/api/github?q=bo')).body.items.map((i) => i.name), ['Bob']);
+  const page = await admin.get('/api/github?limit=2&offset=2');
+  assert.deepEqual(page.body.items.map((i) => i.name), ['Dan']);
+  assert.equal(page.body.total, 3);
+
+  const it = app.client(); await it.login('hod.it');
+  assert.deepEqual((await it.get('/api/github')).body.items.map((i) => i.name), ['Dan']);
+  assert.equal((await it.get('/api/github?deptId=1')).status, 403);
+  const co = app.client(); await co.login('coord');
+  assert.deepEqual((await co.get('/api/github')).body.items.map((i) => i.name), ['Ann']);
+  assert.equal((await co.get('/api/github?year=2')).status, 403);
+
+  assert.equal((await app.client().get('/api/github')).status, 401);
+  assert.equal((await admin.get('/api/github?limit=0')).status, 400);
+  assert.equal((await admin.get('/api/github?year=9')).status, 400);
+});
