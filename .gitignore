@@ -6,3 +6,6 @@ node_modules/
 .catalyst/
 dist/
 !.env.example
+
+# Local Netlify folder
+.netlify

@@ -13,7 +13,7 @@ const ACCOUNTS = [
   { username: 'admin', role: 'admin', title: 'Administrator', deptCode: null },
   { username: 'principal', role: 'viewer', title: 'Principal', deptCode: null },
   { username: 'vice.chairman', role: 'viewer', title: 'Vice Chairman', deptCode: null },
-  { username: 'hod.it', role: 'viewer', title: 'HOD - IT', deptCode: 'IT' },
+  { username: 'hod.it', role: 'viewer', title: 'HoD - IT', deptCode: 'IT' },
 ];
 
 // Development passwords published in .env.example; never acceptable for a production seed.

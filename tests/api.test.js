@@ -89,7 +89,7 @@ test('leetcode leaderboard defaults to problems solved with tie-breaks and posit
   assert.deepEqual(body.entries[0], {
     position: 1, studentId: body.entries[0].studentId, name: 'Bob', rollNo: 'B', deptCode: 'CSE',
     batchYear: 2028, yearOfStudy: 3, solved: { total: 300, easy: 100, medium: 150, hard: 50 },
-    globalRank: 900, stars: null, profileUrl: 'https://leetcode.com/u/bob/',
+    globalRank: 900, stars: null, profileUrl: 'https://leetcode.com/u/bob/', weekGain: null, stale: false,
   });
 });
 

@@ -4,6 +4,7 @@ import { parseProfileUrl, fetchProfile as defaultFetchProfile } from '../../scra
 import { recordSuccess, recordNotFound } from './queue.js';
 import { PROFILE_URL } from './leaderboard.js';
 import { yearOfStudy } from './year.js';
+import { parseGithubUrl } from './github.js';
 
 export { ValidationError };
 
@@ -12,8 +13,10 @@ const URL_FIELD = { leetcode: 'leetcodeUrl', hackerrank: 'hackerrankUrl' };
 const VERIFY_TIMEOUT_MS = 8000;
 const text = (v) => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '');
 
-function checkFields(input, { partial }) {
+// lenientGithub: a bad GitHub link is dropped with a warning instead of failing the row (CSV imports).
+function checkFields(input, { partial, lenientGithub = false }) {
   const errors = [];
+  const warnings = [];
   const fields = {};
 
   if (!partial || input.name !== undefined) {
@@ -24,8 +27,8 @@ function checkFields(input, { partial }) {
   }
   if (!partial || input.rollNo !== undefined) {
     const rollNo = text(input.rollNo);
-    if (!rollNo) errors.push('rollNo is required');
-    else if (rollNo.length > 40) errors.push('rollNo must be at most 40 characters');
+    if (!rollNo) errors.push('reg no is required');
+    else if (rollNo.length > 40) errors.push('reg no must be at most 40 characters');
     else fields.rollNo = rollNo;
   }
   if (!partial || input.batchYear !== undefined) {
@@ -33,7 +36,13 @@ function checkFields(input, { partial }) {
     if (!Number.isInteger(batch) || batch < 2000 || batch > 2100) errors.push('batchYear must be a year like 2028');
     else fields.batchYear = batch;
   }
-  return { errors, fields };
+  if (input.githubUrl !== undefined) {
+    const g = parseGithubUrl(input.githubUrl);
+    if (g.ok) fields.githubUrl = g.url; // null clears it
+    else if (lenientGithub) warnings.push(`${g.error}; the GitHub link was not saved`);
+    else errors.push(g.error);
+  }
+  return { errors, warnings, fields };
 }
 
 // Returns { errors, urls } where urls[platform] is a username, null (remove) or absent (unchanged / not given).
@@ -83,7 +92,7 @@ export async function verifyAccounts(accounts, fetchProfile = defaultFetchProfil
 
 const notFoundErrors = (checks) => checks.filter((c) => c.status === 'not_found').map((c) => `${c.platform}: profile "${c.username}" was not found`);
 
-const rollTaken = (rollNo) => new ValidationError([`roll number ${rollNo} already exists`], { status: 409, code: 'ROLL_NUMBER_EXISTS' });
+const rollTaken = (rollNo) => new ValidationError([`reg no ${rollNo} already exists`], { status: 409, code: 'ROLL_NUMBER_EXISTS' });
 
 // The student already exists by now, so a failure here becomes a warning rather than an error;
 // the next scrape fills in the snapshot.
@@ -112,8 +121,8 @@ const warningsFor = (checks) => checks.filter((c) => c.status === 'unverified')
 
 // Validates a candidate student without writing anything. Returns { errors, value } where value is
 // { name, rollNo, batchYear, deptId, accounts } when there are no errors.
-async function prepareStudent(db, input) {
-  const { errors, fields } = checkFields(input, { partial: false });
+async function prepareStudent(db, input, { lenientGithub = false } = {}) {
+  const { errors, warnings, fields } = checkFields(input, { partial: false, lenientGithub });
   const urlCheck = checkUrls(input);
   errors.push(...urlCheck.errors);
 
@@ -124,7 +133,7 @@ async function prepareStudent(db, input) {
   const dept = await resolveDepartment(db, input);
   if (!dept) errors.push(departmentError(input));
 
-  return { errors, value: { ...fields, deptId: dept?.id, deptCode: dept?.code, accounts } };
+  return { errors, warnings, value: { ...fields, deptId: dept?.id, deptCode: dept?.code, accounts } };
 }
 
 // Creates a student and one platform_account per provided profile URL. With verify, each profile
@@ -144,8 +153,8 @@ export async function addStudent(db, input, { verify = false, fetchProfile = def
     let student;
     try {
       student = (await client.query(
-        'insert into students (roll_no, name, dept_id, batch_year) values ($1, $2, $3, $4) returning id',
-        [value.rollNo, value.name, value.deptId, value.batchYear],
+        'insert into students (roll_no, name, dept_id, batch_year, github_url) values ($1, $2, $3, $4, $5) returning id',
+        [value.rollNo, value.name, value.deptId, value.batchYear, value.githubUrl ?? null],
       )).rows[0];
     } catch (err) {
       if (err.code === '23505') throw rollTaken(value.rollNo);
@@ -167,7 +176,7 @@ export async function addStudent(db, input, { verify = false, fetchProfile = def
 }
 
 const STUDENT_SELECT = `
-  select st.id, st.roll_no, st.name, st.dept_id, d.code as dept_code, st.batch_year,
+  select st.id, st.roll_no, st.name, st.dept_id, d.code as dept_code, st.batch_year, st.github_url,
     coalesce(json_agg(json_build_object(
       'platform', pa.platform, 'username', pa.username, 'state', pa.state,
       'attempts', pa.attempts, 'lastOkAt', pa.last_ok_at, 'lastError', pa.last_error
@@ -184,6 +193,7 @@ const toStudent = (r, now = new Date()) => ({
   deptCode: r.dept_code,
   batchYear: r.batch_year,
   yearOfStudy: yearOfStudy(r.batch_year, now),
+  githubUrl: r.github_url,
   accounts: r.accounts.map((a) => ({ ...a, profileUrl: PROFILE_URL[a.platform](a.username) })),
 });
 
@@ -243,7 +253,7 @@ export async function updateStudent(db, id, input, { fetchProfile = defaultFetch
   await withTransaction(db, async (client) => {
     const sets = [];
     const values = [id];
-    for (const [key, column] of [['name', 'name'], ['rollNo', 'roll_no'], ['deptId', 'dept_id'], ['batchYear', 'batch_year']]) {
+    for (const [key, column] of [['name', 'name'], ['rollNo', 'roll_no'], ['deptId', 'dept_id'], ['batchYear', 'batch_year'], ['githubUrl', 'github_url']]) {
       if (changes[key] === undefined) continue;
       values.push(changes[key]);
       sets.push(`${column} = $${values.length}`);
@@ -322,26 +332,26 @@ export async function validateRows(db, rows, { fetchProfile = defaultFetchProfil
   const results = [];
 
   for (const [index, row] of rows.entries()) {
-    const { errors, value } = await prepareStudent(db, row);
+    const { errors, warnings: fieldWarnings, value } = await prepareStudent(db, row, { lenientGithub: true });
     const roll = value.rollNo;
     if (roll) {
-      if (seenRolls.has(roll.toLowerCase())) errors.push(`roll number ${roll} appears more than once in this file`);
+      if (seenRolls.has(roll.toLowerCase())) errors.push(`reg no ${roll} appears more than once in this file`);
       seenRolls.add(roll.toLowerCase());
-      if ((await db.query('select 1 from students where roll_no = $1', [roll])).rowCount) errors.push(`roll number ${roll} already exists`);
+      if ((await db.query('select 1 from students where roll_no = $1', [roll])).rowCount) errors.push(`reg no ${roll} already exists`);
     }
     if (errors.length) {
-      results.push({ index, checked: true, ok: false, errors, warnings: [], accounts: [] });
+      results.push({ index, checked: true, ok: false, errors, warnings: fieldWarnings, accounts: [] });
       continue;
     }
 
     if (clock() - started + VERIFY_TIMEOUT_MS > budgetMs) {
-      results.push({ index, checked: false, ok: false, errors: [], warnings: [], accounts: [] });
+      results.push({ index, checked: false, ok: false, errors: [], warnings: fieldWarnings, accounts: [] });
       continue;
     }
     const checks = await verifyAccounts(value.accounts, fetchProfile);
     const missing = notFoundErrors(checks);
     results.push({
-      index, checked: true, ok: !missing.length, errors: missing, warnings: warningsFor(checks),
+      index, checked: true, ok: !missing.length, errors: missing, warnings: [...fieldWarnings, ...warningsFor(checks)],
       accounts: describeChecks(value.accounts, checks).map(({ platform, username, verified, stats }) => ({ platform, username, verified, solvedTotal: stats?.solvedTotal ?? null })),
     });
     await pause(pauseMs);
@@ -355,7 +365,7 @@ export async function importRows(db, rows) {
   const skipped = [];
 
   for (const [index, row] of rows.entries()) {
-    const { errors, value } = await prepareStudent(db, row);
+    const { errors, warnings, value } = await prepareStudent(db, row, { lenientGithub: true });
     if (errors.length) {
       skipped.push({ index, rollNo: text(row.rollNo) || null, reason: errors.join('; ') });
       continue;
@@ -363,18 +373,18 @@ export async function importRows(db, rows) {
     try {
       const studentId = await withTransaction(db, async (client) => {
         const student = (await client.query(
-          'insert into students (roll_no, name, dept_id, batch_year) values ($1, $2, $3, $4) returning id',
-          [value.rollNo, value.name, value.deptId, value.batchYear],
+          'insert into students (roll_no, name, dept_id, batch_year, github_url) values ($1, $2, $3, $4, $5) returning id',
+          [value.rollNo, value.name, value.deptId, value.batchYear, value.githubUrl ?? null],
         )).rows[0];
         for (const a of value.accounts) {
           await client.query('insert into platform_accounts (student_id, platform, username) values ($1, $2, $3)', [student.id, a.platform, a.username]);
         }
         return student.id;
       });
-      created.push({ index, studentId, rollNo: value.rollNo });
+      created.push({ index, studentId, rollNo: value.rollNo, ...(warnings.length ? { warnings } : {}) });
     } catch (err) {
       if (err.code !== '23505') throw err;
-      skipped.push({ index, rollNo: value.rollNo, reason: `roll number ${value.rollNo} already exists` });
+      skipped.push({ index, rollNo: value.rollNo, reason: `reg no ${value.rollNo} already exists` });
     }
   }
   return { created, skipped };
