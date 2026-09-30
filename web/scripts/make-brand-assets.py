@@ -1,6 +1,6 @@
-"""Cuts the two RMK logo images out of their white backgrounds and writes transparent PNGs to public/brand/.
+"""Cuts the RMK crest out of its white background and writes a transparent PNG (and a favicon) to public/brand/.
 
-Usage (from web/):  python3 scripts/make-brand-assets.py <crest.jpg> <31-years.jpg>
+Usage (from web/):  python3 scripts/make-brand-assets.py <crest.jpg>
 Needs Pillow and numpy.
 """
 import sys
@@ -47,9 +47,8 @@ def dominant(img, n=5):
 
 
 if __name__ == '__main__':
-    crest_src, years_src = sys.argv[1], sys.argv[2]
+    crest_src = sys.argv[1]
     crest = cutout(crest_src, 'rmk-crest.png', thresh=34, max_side=489)
-    years = cutout(years_src, 'rmk-31-years.png', thresh=30, max_side=520)
 
     # square favicon from the crest
     side = max(crest.size)
@@ -57,6 +56,5 @@ if __name__ == '__main__':
     icon.alpha_composite(crest, ((side - crest.width) // 2, (side - crest.height) // 2))
     icon.resize((128, 128), Image.LANCZOS).save(OUT / 'favicon.png', optimize=True)
 
-    print('crest', crest.size, '| 31 years', years.size)
-    print('31 years colours:', dominant(years))
+    print('crest', crest.size)
     print('crest colours:', dominant(crest))

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
-export const COLORS = { leetcode: '#2b6cdf', hackerrank: '#b45309' };
+export const COLORS = { leetcode: '#2b6cdf', hackerrank: '#b45309', github: '#24292f' };
 
 export function Sparkline({ data, color = COLORS.leetcode }) {
   const id = useId().replace(/:/g, '');

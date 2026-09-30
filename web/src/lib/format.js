@@ -1,12 +1,18 @@
 const nf = new Intl.NumberFormat('en-IN');
 export const num = (n) => (n == null ? '—' : nf.format(n));
 
+// 05:00-11:59 Morning, 12:00-16:59 Afternoon, 17:00-20:59 Evening, otherwise Night
 export function greeting(date = new Date()) {
   const h = date.getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (h >= 5 && h < 12) return 'Good Morning';
+  if (h >= 12 && h < 17) return 'Good Afternoon';
+  if (h >= 17 && h < 21) return 'Good Evening';
+  return 'Good Night';
 }
+
+// Job titles are typed by hand and stored as given, so tidy the ones we know are often written in capitals:
+// the head of department is "HoD", not "HOD".
+export const niceTitle = (t) => (t || '').replace(/\bHOD\b/gi, 'HoD');
 
 export const longDate = (d = new Date()) =>
   d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });

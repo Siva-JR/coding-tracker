@@ -3,7 +3,7 @@ import { api } from '../api/index.js';
 import { useAsync } from '../lib/hooks.js';
 import { useAuth } from '../context/Auth.jsx';
 import { useScope } from '../context/Scope.jsx';
-import { greeting, longDate, num, relDay, shortDate } from '../lib/format.js';
+import { greeting, longDate, niceTitle, num, relDay, shortDate } from '../lib/format.js';
 import { Icon } from '../components/Icons.jsx';
 import { Scribble } from '../components/Decor.jsx';
 import { COLORS, LineChart, Sparkline } from '../components/Charts.jsx';
@@ -75,7 +75,7 @@ export default function Dashboard() {
     <>
       <header className="page-head">
         <div>
-          <h1>{greeting()}, {user.displayTitle}</h1>
+          <h1>{greeting()}, {niceTitle(user.displayTitle)}</h1>
           <Scribble />
           <p className="sub">{isHod || dept ? (scope.single ? scope.single.name : scopeName) : scope.multi && user.role !== 'admin' && !scope.years ? 'Your departments' : 'Whole college'}</p>
           <p className="date">{longDate()}</p>

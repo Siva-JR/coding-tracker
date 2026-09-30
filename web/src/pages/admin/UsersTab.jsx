@@ -6,6 +6,7 @@ import { useScope } from '../../context/Scope.jsx';
 import { useToast } from '../../components/Toasts.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { ErrorBox, Modal } from './shared.jsx';
+import { niceTitle } from '../../lib/format.js';
 
 const scopeLabel = (s) => `${s.deptCode || 'All departments'} · ${s.year ? `year ${s.year}` : 'all years'}`;
 const BLANK = { username: '', displayTitle: '', role: 'viewer', password: '', scopes: [{ deptId: '', year: '' }] };
@@ -110,7 +111,7 @@ export default function UsersTab() {
                   {u.disabled && <span className="chip bad" style={{ marginLeft: 8 }}>disabled</span>}
                   {u.mustChangePassword && <span className="chip warn" style={{ marginLeft: 8 }}>must change password</span>}
                 </td>
-                <td>{u.displayTitle || '—'}</td>
+                <td>{niceTitle(u.displayTitle) || '—'}</td>
                 <td><span className={`chip ${u.role === 'admin' ? 'blue' : ''}`}>{u.role === 'admin' ? 'Admin' : 'Viewer'}</span></td>
                 <td style={{ maxWidth: 260 }}>{u.role === 'admin' ? 'Everything' : u.scopes.map(scopeLabel).join(', ')}</td>
                 <td className="r" style={{ whiteSpace: 'nowrap' }}>
@@ -130,7 +131,7 @@ export default function UsersTab() {
           <ErrorBox err={formError} style={{ marginTop: 10 }} />
           <div className="form-grid" style={{ marginTop: 14 }}>
             {form.mode === 'create' && <div className="field"><label htmlFor="u-n">Username</label><input id="u-n" className="input" autoCapitalize="none" spellCheck="false" value={form.username} onChange={set('username')} /><span className="hint">3–32 characters: letters, digits, dot, dash, underscore.</span></div>}
-            <div className="field"><label htmlFor="u-t">Display title</label><input id="u-t" className="input" placeholder="HOD - IT" value={form.displayTitle} onChange={set('displayTitle')} /></div>
+            <div className="field"><label htmlFor="u-t">Display title</label><input id="u-t" className="input" placeholder="HoD - IT" value={form.displayTitle} onChange={set('displayTitle')} /></div>
             <div className="field"><label htmlFor="u-r">Role</label>
               <select id="u-r" className="input" value={form.role} onChange={set('role')} disabled={form.mode === 'edit' && form.id === me.id}>
                 <option value="viewer">Viewer (read-only, limited to scopes)</option><option value="admin">Admin (everything)</option>

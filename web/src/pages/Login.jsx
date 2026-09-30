@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/Auth.jsx';
 import { Icon } from '../components/Icons.jsx';
-import { Crest, Footer, YearsMark, PRODUCT } from '../components/Brand.jsx';
+import { Crest, Footer } from '../components/Brand.jsx';
 import { Blobs } from '../components/Decor.jsx';
 import { DEMO_PASSWORD, isLiveMode } from '../api/index.js';
 
@@ -40,7 +40,6 @@ export default function Login() {
       <div className="bezel">
         <div className="glass">
           <Blobs />
-          <YearsMark height={64} />
           <div className="scroll bare" style={{ padding: 0 }}>
             <div className="login-wrap">
               <div className="login">
@@ -67,7 +66,7 @@ export default function Login() {
                     </div>
                   </div>
                   <button className="btn" style={{ height: 50, fontSize: 16 }} disabled={busy}>{busy ? 'Signing in…' : 'Sign In'}</button>
-                  <p className="roles">Principal <span className="dot-sep" />HOD<span className="dot-sep" />Admin</p>
+                  <p className="roles">Principal <span className="dot-sep" />HoD<span className="dot-sep" />Admin</p>
                 </form>
                 {!isLiveMode && <p className="demo">Demo data. Try <code>admin</code>, <code>principal</code> or <code>hod.it</code> with password <code>{DEMO_PASSWORD}</code>.</p>}
               </div>

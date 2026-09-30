@@ -115,6 +115,7 @@ export function generateStudents() {
         batchYear,
         leetcodeUsername: lcUser,
         hackerrankUsername: hrUser,
+        githubUrl: [...lcUser].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % 10 < 7 ? `https://github.com/${lcUser}` : null,
         leetcode: {
           status: lcStatus,
           history: lcHist,
@@ -153,7 +154,7 @@ export const USERS = [
   { id: 2, username: 'principal', role: 'viewer', displayTitle: 'Principal', scopes: [scopeFor(null)] },
   { id: 3, username: 'vice.chairman', role: 'viewer', displayTitle: 'Vice Chairman', scopes: [scopeFor(null)] },
   ...DEPARTMENTS.map((d, i) => ({
-    id: 4 + i, username: `hod.${d.code.toLowerCase()}`, role: 'viewer', displayTitle: `HOD - ${d.code}`, scopes: [scopeFor(d.id)],
+    id: 4 + i, username: `hod.${d.code.toLowerCase()}`, role: 'viewer', displayTitle: `HoD - ${d.code}`, scopes: [scopeFor(d.id)],
   })),
   { id: 14, username: 'coord.cse2', role: 'viewer', displayTitle: 'CSE 2nd-year coordinator', scopes: [scopeFor(1, 2)] },
 ].map((u) => ({ ...u, password: DEMO_PASSWORD, mustChangePassword: false, disabled: false }));

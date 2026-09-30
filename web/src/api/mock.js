@@ -208,6 +208,22 @@ export async function activity(user, { deptId, limit = 8 } = {}) {
   return events.slice(0, limit);
 }
 
+// GitHub tab: who has shared a GitHub link. Links are listed, never fetched.
+export async function github(user, { deptId, year = 'all', q = '', limit = 20, offset = 0 } = {}) {
+  await wait(160);
+  const inScope = visible(user, { deptId, year });
+  const needle = String(q || '').trim().toLowerCase();
+  const withLink = inScope
+    .filter((s) => s.githubUrl && (!needle || s.name.toLowerCase().includes(needle) || s.rollNo.toLowerCase().includes(needle)))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id);
+  return {
+    total: withLink.length, scopeTotal: inScope.length, limit, offset,
+    items: withLink.slice(offset, offset + limit).map((s) => ({
+      studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: yearOf(s), githubUrl: s.githubUrl,
+    })),
+  };
+}
+
 // ── student detail & attention (not on the real backend yet) ────────────
 function studentSummary(s) {
   return {

@@ -4,7 +4,7 @@ import { Icon } from './Icons.jsx';
 import { Blobs } from './Decor.jsx';
 import { useAuth } from '../context/Auth.jsx';
 import { api, isSample } from '../api/index.js';
-import { longDate } from '../lib/format.js';
+import { longDate, niceTitle } from '../lib/format.js';
 import { describeScopes } from '../lib/access.js';
 import { BrandBar, Footer } from './Brand.jsx';
 import { useScope } from '../context/Scope.jsx';
@@ -90,7 +90,7 @@ export default function Shell() {
                 <span className="chip ok"><Icon name="check" size={14} /> Last full update: {longDate()}</span>
               </Popover>
               <Popover id="account" open={pop === 'account'} onClose={() => setPop(null)}>
-                <h4>{user.displayTitle}</h4>
+                <h4>{niceTitle(user.displayTitle)}</h4>
                 <p className="sub">
                   @{user.username}
                   <br />{describeScopes(user)}

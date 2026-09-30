@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, has } from '../api/index.js';
 import { useAsync } from '../lib/hooks.js';
@@ -6,6 +6,9 @@ import { num, shortDate } from '../lib/format.js';
 import { COLORS } from './Charts.jsx';
 import { Icon } from './Icons.jsx';
 import { useScope } from '../context/Scope.jsx';
+import GithubList from './GithubList.jsx';
+
+export const TOP_CHOICES = [3, 5, 10, 20];
 
 export const YEARS = [
   ['all', 'All'], ['1', '1st year'], ['2', '2nd year'], ['3', '3rd year'], ['4', '4th year'],
@@ -14,7 +17,7 @@ export const YEARS = [
 export function PlatformToggle({ value, onChange }) {
   return (
     <div className="seg" role="group" aria-label="Platform">
-      {[['leetcode', 'LeetCode'], ['hackerrank', 'HackerRank']].map(([k, l]) => (
+      {[['leetcode', 'LeetCode'], ['hackerrank', 'HackerRank'], ['github', 'GitHub']].map(([k, l]) => (
         <button key={k} aria-pressed={value === k} onClick={() => onChange(k)}>
           <span className="swatch" style={{ background: COLORS[k] }} />{l}
         </button>
@@ -80,23 +83,50 @@ export function LeaderboardTable({ data, platform, showDept, onOpen }) {
   );
 }
 
-/** The landing-page leaderboard: platform toggle, sort toggle, year tabs. */
-export default function Leaderboard({ deptId, showDept, allowDeptFilter, departments, onDept }) {
+// The ranked table for LeetCode / HackerRank.
+function RankedList({ platform, sort, year, deptId, limit, showDept, onAsOf }) {
   const nav = useNavigate();
+  const q = useMemo(() => ({ platform, sort, year, deptId, limit }), [platform, sort, year, deptId, limit]);
+  const { data, loading, error, reload } = useAsync(() => api.leaderboard(q), [q]);
+  useEffect(() => { onAsOf(data?.asOf ?? null); }, [data?.asOf]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <>
+      {loading && !data && <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>{Array.from({ length: Math.min(limit, 6) }, (_, i) => <div key={i} className="skeleton" style={{ height: 46 }} />)}</div>}
+      {error && (
+        <div className="alert" role="alert"><Icon name="alert" /> <span>Couldn't load the leaderboard. <button className="link-btn" onClick={reload}>Try again</button></span></div>
+      )}
+      {data && data.entries.length === 0 && <div className="empty"><span className="hand">Nothing here yet</span>No students with a fetched profile match these filters.</div>}
+      {data && data.entries.length > 0 && (
+        <div style={{ opacity: loading ? 0.55 : 1, transition: 'opacity .15s' }}>
+          <LeaderboardTable data={data} platform={platform} showDept={showDept} onOpen={has('student') ? (id) => nav(`/student/${id}`) : undefined} />
+        </div>
+      )}
+      <p className="hint" style={{ marginTop: 10 }}>
+        Counts show practice activity, not skill. Students with a broken profile are listed under Needs attention instead.
+      </p>
+    </>
+  );
+}
+
+/** The landing-page leaderboard: platform toggle, sort toggle, Top 3/5/10/20, year tabs, and a GitHub tab. */
+export default function Leaderboard({ deptId, showDept, allowDeptFilter, departments, onDept }) {
   const { years: allowedYears } = useScope();
   const yearTabs = allowedYears ? YEARS.filter(([k]) => k === 'all' || allowedYears.includes(Number(k))) : YEARS;
   const [platform, setPlatform] = useState('leetcode');
   const [sort, setSort] = useState('solved');
   const [year, setYear] = useState('all');
+  const [top, setTop] = useState(20);
+  const [asOf, setAsOf] = useState(null);
+  const ranked = platform !== 'github';
   const effSort = platform === 'hackerrank' ? 'solved' : sort;
-  const q = useMemo(() => ({ platform, sort: effSort, year, deptId, limit: 20 }), [platform, effSort, year, deptId]);
-  const { data, loading, error, reload } = useAsync(() => api.leaderboard(q), [q]);
+  const where = deptId ? 'in the department' : 'across the college';
 
   return (
     <section className="card" aria-labelledby="lb-h">
       <div className="card-head">
-        <h2 id="lb-h"><Icon name="trophy" /> Top 20 {deptId ? 'in the department' : 'across the college'}</h2>
-        {data?.asOf && <span className="hint">as of {shortDate(data.asOf)}</span>}
+        <h2 id="lb-h"><Icon name={ranked ? 'trophy' : 'code'} /> {ranked ? `Top ${top} ${where}` : `GitHub profiles ${where}`}</h2>
+        {ranked && asOf && <span className="hint">as of {shortDate(asOf)}</span>}
       </div>
 
       <div className="controls">
@@ -105,6 +135,11 @@ export default function Leaderboard({ deptId, showDept, allowDeptFilter, departm
           <div className="seg" role="group" aria-label="Sort by">
             <button aria-pressed={sort === 'solved'} onClick={() => setSort('solved')}>Problems solved</button>
             <button aria-pressed={sort === 'rank'} onClick={() => setSort('rank')}>Global rank</button>
+          </div>
+        )}
+        {ranked && (
+          <div className="seg" role="group" aria-label="How many to show">
+            {TOP_CHOICES.map((n) => <button key={n} aria-pressed={top === n} onClick={() => setTop(n)}>Top {n}</button>)}
           </div>
         )}
         <div className="spacer" />
@@ -123,19 +158,9 @@ export default function Leaderboard({ deptId, showDept, allowDeptFilter, departm
         </div>
       </div>
 
-      {loading && !data && <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="skeleton" style={{ height: 46 }} />)}</div>}
-      {error && (
-        <div className="alert" role="alert"><Icon name="alert" /> <span>Couldn't load the leaderboard. <button className="link-btn" onClick={reload}>Try again</button></span></div>
-      )}
-      {data && data.entries.length === 0 && <div className="empty"><span className="hand">Nothing here yet</span>No students with a fetched profile match these filters.</div>}
-      {data && data.entries.length > 0 && (
-        <div style={{ opacity: loading ? 0.55 : 1, transition: 'opacity .15s' }}>
-          <LeaderboardTable data={data} platform={platform} showDept={showDept} onOpen={has('student') ? (id) => nav(`/student/${id}`) : undefined} />
-        </div>
-      )}
-      <p className="hint" style={{ marginTop: 10 }}>
-        Counts show practice activity, not skill. Students with a broken profile are listed under Needs attention instead.
-      </p>
+      {ranked
+        ? <RankedList platform={platform} sort={effSort} year={year} deptId={deptId} limit={top} showDept={showDept} onAsOf={setAsOf} />
+        : <GithubList deptId={deptId} year={year} showDept={showDept} />}
     </section>
   );
 }

@@ -18,6 +18,7 @@ const LIVE = {
   auth: isLiveMode,
   departments: isLiveMode,
   leaderboard: isLiveMode,
+  github: isLiveMode,
   admin: isLiveMode,
   stats: isLiveMode,
   activity: isLiveMode,
@@ -69,6 +70,7 @@ export const api = {
   },
   departments: () => (LIVE.departments ? live.departments() : mock.departments(u())),
   leaderboard: (q) => (LIVE.leaderboard ? live.leaderboard(q) : mock.leaderboard(u(), q)),
+  github: (q) => (LIVE.github ? live.github(q) : mock.github(u(), q)),
 
   departmentOverview: () => (LIVE.departmentOverview ? live.departmentOverview() : mock.departmentOverview(u())),
   stats: (q) => (LIVE.stats ? live.stats(q) : mock.stats(u(), q)),

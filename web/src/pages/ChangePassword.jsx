@@ -3,7 +3,8 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/Auth.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { Blobs } from '../components/Decor.jsx';
-import { Crest, Footer, YearsMark } from '../components/Brand.jsx';
+import { Crest, Footer } from '../components/Brand.jsx';
+import { niceTitle } from '../lib/format.js';
 
 /** Shown when an admin created or reset the account: a new password is required before anything else. */
 export default function ChangePassword() {
@@ -37,13 +38,12 @@ export default function ChangePassword() {
       <div className="bezel">
         <div className="glass">
           <Blobs />
-          <YearsMark height={64} />
           <div className="scroll bare" style={{ padding: 0 }}>
             <div className="login-wrap">
               <div className="login">
                 <Crest height={96} className="login-crest" />
                 <h1>Set a <em>new password</em></h1>
-                <p className="tag">Hi {user.displayTitle || user.username}, an administrator set your current password. Pick your own to continue.</p>
+                <p className="tag">Hi {niceTitle(user.displayTitle) || user.username}, an administrator set your current password. Pick your own to continue.</p>
                 <form className="card" onSubmit={submit} noValidate>
                   {error && <div className="alert" role="alert"><Icon name="alert" /><span>{error}</span></div>}
                   <div className="field"><label htmlFor="cp-c">Current password</label>
