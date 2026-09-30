@@ -50,22 +50,35 @@ async function loadAccounts(db, ids) {
   return new Map(rows.map((r) => [key(r.student_id, r.platform), r]));
 }
 
-const SNAP_COLS = 'student_id, platform, snap_date::text as date, solved_total as total, solved_easy as easy, solved_medium as medium, solved_hard as hard, global_rank as rank, hr_stars as stars';
+// One row per (student, platform) taken straight from the index on snapshots (student_id, platform, snap_date):
+// each lookup reads a single row, so the cost stays flat as nightly snapshots pile up. The older way (DISTINCT ON
+// over every snapshot) had to sort the whole table on each page load.
+const ACCOUNT_KEYS = `select st.id as student_id, p.platform
+  from unnest($1::int[]) as st(id) cross join (values ('leetcode'), ('hackerrank')) as p(platform)`;
+
+// order: 'desc' = latest, 'asc' = earliest. upTo: only snapshots on or before this date.
+async function onePerAccount(db, ids, { order, upTo = null }) {
+  const { rows } = await db.query(
+    `select s.* from (${ACCOUNT_KEYS}) k
+     cross join lateral (
+       select sn.student_id, sn.platform, sn.snap_date::text as date, sn.solved_total as total,
+              sn.solved_easy as easy, sn.solved_medium as medium, sn.solved_hard as hard,
+              sn.global_rank as rank, sn.hr_stars as stars
+       from snapshots sn
+       where sn.student_id = k.student_id and sn.platform = k.platform ${upTo ? 'and sn.snap_date <= $2::date' : ''}
+       order by sn.snap_date ${order === 'asc' ? 'asc' : 'desc'} limit 1
+     ) s`,
+    upTo ? [ids, upTo] : [ids],
+  );
+  return new Map(rows.map((r) => [key(r.student_id, r.platform), r]));
+}
 
 // Per (student, platform): latest snapshot, earliest snapshot, and the snapshot at or before N days ago.
 async function loadFacts(db, ids, today, baselines = [7]) {
-  const one = async (extraWhere, order, params) => {
-    const { rows } = await db.query(
-      `select distinct on (student_id, platform) ${SNAP_COLS} from snapshots
-       where student_id = any($1::int[]) ${extraWhere} order by student_id, platform, snap_date ${order}`,
-      [ids, ...params],
-    );
-    return new Map(rows.map((r) => [key(r.student_id, r.platform), r]));
-  };
-  const latest = await one('', 'desc', []);
-  const earliest = await one('', 'asc', []);
+  const latest = await onePerAccount(db, ids, { order: 'desc' });
+  const earliest = await onePerAccount(db, ids, { order: 'asc' });
   const base = {};
-  for (const days of baselines) base[days] = await one('and snap_date <= $2::date', 'desc', [addDays(today, -days)]);
+  for (const days of baselines) base[days] = await onePerAccount(db, ids, { order: 'desc', upTo: addDays(today, -days) });
   return { latest, earliest, base };
 }
 
@@ -101,14 +114,16 @@ const accountStatus = (a) => (a.state === 'broken' ? 'not_found' : a.last_error 
 const needsAttention = (a) => accountStatus(a) !== 'ok';
 
 async function weeklyTotals(db, ids, today) {
+  // For each of the last 13 week-ends, the last snapshot on or before it for every student and platform.
   const { rows } = await db.query(
-    `select w.n as wk, s.student_id, s.platform, s.solved_total as total
+    `select w.n as wk, s.student_id, s.platform, s.total
      from generate_series(0, $3::int) as w(n)
+     cross join (${ACCOUNT_KEYS}) k
      cross join lateral (
-       select distinct on (sn.student_id, sn.platform) sn.student_id, sn.platform, sn.solved_total
+       select sn.student_id, sn.platform, sn.solved_total as total
        from snapshots sn
-       where sn.student_id = any($1::int[]) and sn.snap_date <= ($2::date - (w.n * 7))
-       order by sn.student_id, sn.platform, sn.snap_date desc
+       where sn.student_id = k.student_id and sn.platform = k.platform and sn.snap_date <= ($2::date - (w.n * 7))
+       order by sn.snap_date desc limit 1
      ) s`,
     [ids, today, WEEKS],
   );
