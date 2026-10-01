@@ -2,7 +2,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/index.js';
 import { useAsync } from '../lib/hooks.js';
 import { num, shortDate } from '../lib/format.js';
-import { ordinalYear } from '../lib/yearOfStudy.js';
+import { yearLabel } from '../lib/yearOfStudy.js';
 import { Icon } from '../components/Icons.jsx';
 import { COLORS, LineChart } from '../components/Charts.jsx';
 
@@ -76,7 +76,7 @@ export default function StudentDetail() {
               <h1>{s.name}</h1>
               <p className="sub">{s.rollNo} <span className="dot-sep" />{s.deptName}</p>
               <div className="meta">
-                <span className="chip blue">{ordinalYear(s.yearOfStudy)}</span>
+                <span className="chip blue">{yearLabel(s.yearOfStudy)}</span>
                 <span className="chip">Batch {s.batchYear}</span>
                 {s.githubUrl && <a className="chip" href={s.githubUrl} target="_blank" rel="noreferrer noopener">GitHub <Icon name="external" size={12} /></a>}
               </div>

@@ -93,7 +93,7 @@ export async function departmentOverview(user) {
 }
 
 // ── leaderboard ─────────────────────────────────────────────────────────
-export async function leaderboard(user, { platform = 'leetcode', sort = 'solved', year = 'all', deptId, limit = 20 } = {}) {
+export async function leaderboard(user, { platform = 'leetcode', sort = 'solved', year = 'all', deptId, limit = 20, q = '' } = {}) {
   await wait();
   if (platform === 'hackerrank' && sort === 'rank') throw new ApiError(400, 'BAD_REQUEST', 'HackerRank can only be sorted by problems solved');
   const list = visible(user, { deptId, year }).filter((s) => total(s, platform) != null && s[platform].status !== 'not_found');
@@ -105,8 +105,11 @@ export async function leaderboard(user, { platform = 'leetcode', sort = 'solved'
     if (t) return t;
     return platform === 'leetcode' ? b.leetcode.hard - a.leetcode.hard || b.leetcode.medium - a.leetcode.medium : 0;
   });
-  const entries = sorted.slice(0, limit).map((s, i) => ({
-    position: i + 1, studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: yearOf(s),
+  const needle = String(q || '').trim().toLowerCase();
+  const ranked = sorted.map((s, i) => ({ s, position: i + 1 }));          // rank everyone first, then search
+  const matched = needle ? ranked.filter(({ s }) => s.name.toLowerCase().includes(needle) || s.rollNo.toLowerCase().includes(needle)) : ranked;
+  const entries = matched.slice(0, limit).map(({ s, position }) => ({
+    position, studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: yearOf(s),
     solved: platform === 'leetcode'
       ? { total: total(s, platform), easy: s.leetcode.easy, medium: s.leetcode.medium, hard: s.leetcode.hard }
       : { total: total(s, platform), easy: null, medium: null, hard: null },
@@ -116,7 +119,7 @@ export async function leaderboard(user, { platform = 'leetcode', sort = 'solved'
     stale: s[platform].status !== 'ok' || s[platform].lastOk !== TODAY_ISO,
     profileUrl: profileUrl(platform, platform === 'leetcode' ? s.leetcodeUsername : s.hackerrankUsername),
   }));
-  return { platform, sort, year, deptId: deptId ? Number(deptId) : null, asOf: TODAY_ISO, count: list.length, entries };
+  return { platform, sort, year, deptId: deptId ? Number(deptId) : null, q: needle || null, asOf: TODAY_ISO, total: matched.length, scopeTotal: list.length, count: list.length, entries };
 }
 
 // ── stats for the dashboard (not on the real backend yet) ───────────────

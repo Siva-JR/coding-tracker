@@ -87,7 +87,7 @@ export default function AddStudent() {
           </select>
           {show('deptCode') && <span className="err-text">{errs.deptCode}</span>}
         </div>
-        {field('batchYear', 'Batch (graduation year)', { input: { inputMode: 'numeric', placeholder: String(batchYearFor(3)) }, hint: `${youngest} = 1st year, ${batchYearFor(4)} = 4th year` })}
+        {field('batchYear', 'Batch (graduation year)', { input: { inputMode: 'numeric', placeholder: String(batchYearFor(3)) }, hint: `${youngest} = I Year, ${batchYearFor(4)} = IV Year` })}
         {field('leetcodeUrl', 'LeetCode profile URL', { full: true, input: { placeholder: 'https://leetcode.com/u/username', inputMode: 'url' } })}
         {field('hackerrankUrl', 'HackerRank profile URL', { full: true, input: { placeholder: 'https://www.hackerrank.com/profile/username', inputMode: 'url' }, hint: 'At least one of LeetCode or HackerRank is required.' })}
         {field('githubUrl', 'GitHub profile URL', { full: true, input: { placeholder: 'https://github.com/username', inputMode: 'url' } })}

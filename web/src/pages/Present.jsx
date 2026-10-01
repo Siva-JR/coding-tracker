@@ -5,6 +5,7 @@ import { useScope } from '../context/Scope.jsx';
 import { num } from '../lib/format.js';
 import { Icon } from '../components/Icons.jsx';
 import { BrandBar, Footer } from '../components/Brand.jsx';
+import { yearLabel } from '../lib/yearOfStudy.js';
 
 const SLIDE_MS = 12000;
 
@@ -91,7 +92,7 @@ export default function Present() {
             {col.map((e, r) => (
               <div className="prow" key={e.studentId} style={{ animationDelay: `${(c * half + r) * 60}ms` }}>
                 <span className={`pos p${e.position}`}>{e.position}</span>
-                <span className="nm">{e.name}<small>{e.rollNo} · {e.deptCode} · Year {e.yearOfStudy}</small></span>
+                <span className="nm">{e.name}<small>{e.rollNo} · {e.deptCode} · {yearLabel(e.yearOfStudy)}</small></span>
                 <span className="sc num">{num(e.solved.total)}</span>
               </div>
             ))}
