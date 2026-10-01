@@ -24,7 +24,9 @@ function parseLeaderboardQuery(query) {
     sort,
     year: year === 'all' ? 'all' : Number(year),
     deptId: query.deptId === undefined ? null : parseInteger(query.deptId, 'deptId', { min: 1, max: 2147483647 }),
-    limit: query.limit === undefined ? 20 : parseInteger(query.limit, 'limit', { min: 1, max: 100 }),
+    // Up to 1000 so "show everyone" can be a single request.
+    limit: query.limit === undefined ? 20 : parseInteger(query.limit, 'limit', { min: 1, max: 1000 }),
+    q: typeof query.q === 'string' && query.q.trim() ? query.q.trim().slice(0, 100) : null,
   };
 }
 

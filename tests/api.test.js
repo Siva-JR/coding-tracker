@@ -67,7 +67,7 @@ test('GET /health', async () => {
 test('leaderboard rejects invalid query parameters', async () => {
   for (const q of [
     '', '?platform=github', '?platform=leetcode&sort=fastest', '?platform=hackerrank&sort=rank',
-    '?platform=leetcode&year=5', '?platform=leetcode&year=abc', '?platform=leetcode&limit=0', '?platform=leetcode&limit=101', '?platform=leetcode&deptId=x',
+    '?platform=leetcode&year=5', '?platform=leetcode&year=abc', '?platform=leetcode&limit=0', '?platform=leetcode&limit=1001', '?platform=leetcode&deptId=x',
   ]) {
     const { status, body } = await get(`/api/leaderboard${q}`);
     assert.equal(status, 400, q);
