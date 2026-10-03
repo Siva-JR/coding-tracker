@@ -510,7 +510,7 @@ export async function createUser(user, { username, displayTitle, role, password,
   assertAdmin(user);
   await wait(300);
   const name = String(username || '').trim().toLowerCase();
-  if (!/^[a-z0-9._-]{3,32}$/.test(name)) throw new ApiError(400, 'BAD_REQUEST', 'username must be 3-32 characters: letters, digits, dot, dash or underscore');
+  if (name.length > 100 || !/^(?:[a-z0-9._-]{3,32}|[a-z0-9._+-]{1,64}@[a-z0-9-]+(?:\.[a-z0-9-]+)+)$/.test(name)) throw new ApiError(400, 'BAD_REQUEST', 'username must be an email address like hod.it@rmkec.ac.in, or 3-32 characters: letters, digits, dot, dash or underscore');
   if (staff.some((u) => u.username === name)) throw new ApiError(409, 'USERNAME_TAKEN', `Username ${name} is already taken`);
   const generated = !password;
   const plain = generated ? tempPassword() : password;
