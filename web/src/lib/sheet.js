@@ -65,7 +65,8 @@ function pickLink(platform, cell) {
   if (platform === 'github') return { url: '' };
   const link = candidates.find((c) => /^https?:\/\//i.test(c) || /\.com/i.test(c));
   const why = link ? 'the link has no username (it points to the site, not a profile)' : 'no link in the sheet';
-  return { url: '', note: { platform, text: `${PLATFORM_NAME[platform]}: ${why}` } };
+  // kind: 'improper' = something was typed but it is not a profile link; 'missing' = the cell was empty or plain text
+  return { url: '', note: { platform, kind: link ? 'improper' : 'missing', text: `${PLATFORM_NAME[platform]}: ${why}` } };
 }
 
 /**

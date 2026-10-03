@@ -8,6 +8,8 @@ import { readWorkbook } from '../../lib/xlsx.js';
 import { FIELD_LABELS, applyDefaults, studentsFromSheet } from '../../lib/sheet.js';
 import { downloadXlsx, problemsWorkbook, templateWorkbook } from '../../lib/xlsxWrite.js';
 import { newTally } from '../../lib/scrape.js';
+import { allStudents } from '../../lib/students.js';
+import { describePatch, planForExisting } from '../../lib/existing.js';
 import { parseProfileUrl } from '../../lib/profileUrl.js';
 import { checkGithubUrl, githubHandle } from '../../lib/github.js';
 import { batchYearFor, yearBatchLabel, yearLabel } from '../../lib/yearOfStudy.js';
@@ -59,6 +61,8 @@ export default function ImportStudents() {
   const [run, setRun] = useState(null);
   const [running, setRunning] = useState(false);
   const [runDone, setRunDone] = useState(false);
+  const [existing, setExisting] = useState(new Map());   // lower-case reg no -> student already in the system
+  const [checkingExisting, setCheckingExisting] = useState(false);
 
   const deptCodes = useMemo(() => new Set(departments.map((d) => d.code.toUpperCase())), [departments]);
   const seenRegNos = useMemo(() => {
@@ -67,18 +71,21 @@ export default function ImportStudents() {
     return m;
   }, [rows]);
 
-  // Everything the table needs to know about a row.
+  // Everything the table needs to know about a row. A student who is already in the system is not a problem:
+  // they are "already added", or they get a missing link filled in, and only an improper link is flagged.
   const view = rows.map((r, index) => {
     const st = status[r.key];
-    const errors = st?.phase === 'failed' || st?.phase === 'skipped' ? st.errors : (st ? [] : localErrors(r, { deptCodes, seenRegNos }));
-    const phase = st?.phase ?? (errors.length ? 'fix' : 'ready');
-    return { row: r, index, phase, errors, st };
+    const known = existing.get(r.rollNo.trim().toLowerCase());
+    const plan = known ? planForExisting(r, known) : null;
+    const errors = st?.phase === 'failed' || st?.phase === 'skipped' ? st.errors : (st ? [] : plan ? plan.errors : localErrors(r, { deptCodes, seenRegNos }));
+    const phase = st?.phase ?? (plan ? plan.phase : errors.length ? 'fix' : 'ready');
+    return { row: r, index, phase, errors, st, known, plan };
   });
-  // Problems first, then anything not saved yet, then the students that went in fine.
-  const rank = { fix: 0, failed: 0, skipped: 0, unverified: 1, working: 2, ready: 3, done: 4 };
+  // Problems first, then anything not saved yet, then the students that went in fine or were already there.
+  const rank = { fix: 0, failed: 0, skipped: 0, unverified: 1, working: 2, update: 3, ready: 3, exists: 4, updated: 4, done: 4 };
   const sorted = [...view].sort((a, b) => rank[a.phase] - rank[b.phase] || a.index - b.index);
-  const toSend = view.filter((v) => v.phase === 'ready');
-  const flagged = view.filter((v) => ['fix', 'failed', 'skipped', 'unverified'].includes(v.phase) || v.row.notes?.length);
+  const toSend = view.filter((v) => v.phase === 'ready' || v.phase === 'update');
+  const flagged = view.filter((v) => ['fix', 'failed', 'skipped', 'unverified'].includes(v.phase) || (v.row.notes?.length && !['exists', 'update', 'updated'].includes(v.phase)));
 
   // ── reading the file ────────────────────────────────────────────────
   const normDept = (v) => {
@@ -90,6 +97,19 @@ export default function ImportStudents() {
   const begin = (parsed, info) => {
     setRows(parsed.map((r) => ({ ...r, deptCode: normDept(r.deptCode) })));
     setStatus({}); setReadInfo(info); setSetup(null); setRun(null); setRunDone(false);
+    loadExisting();
+  };
+
+  // Who is already in the system, so those rows are not treated as new students.
+  const loadExisting = async () => {
+    setCheckingExisting(true);
+    try {
+      const all = await allStudents();
+      setExisting(new Map(all.map((st) => [st.rollNo.trim().toLowerCase(), st])));
+    } catch {
+      setExisting(new Map());   // the server still refuses a duplicate, and that is shown as "already added" too
+    }
+    setCheckingExisting(false);
   };
   const describe = (res, sheetName) => `Read ${res.rows.length} students from “${sheetName}” (header on row ${res.headerRow}). Matched: ${Object.entries(res.columns).map(([f, h]) => `${FIELD_LABELS[f]} ← ${h}`).join(' · ')}.`;
   const describeColumns = (res) => `Matched: ${Object.entries(res.columns).map(([f, h]) => `${FIELD_LABELS[f]} ← ${h}`).join(' · ')}`;
@@ -140,7 +160,23 @@ export default function ImportStudents() {
   const dropRow = (key) => { setRows((rs) => rs.filter((r) => r.key !== key)); setStatus((s) => { const n = { ...s }; delete n[key]; return n; }); };
 
   // ── importing: one student at a time, each fetched once as it is saved ─
-  const saveOne = async (row) => {
+  const saveOne = async (v) => {
+    const { row } = v;
+    // A student already in the system only gets the missing link(s) added.
+    if (v.known && v.plan?.phase === 'update') {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const res = await api.admin.updateStudent(v.known.id, v.plan.patch);
+          return { phase: 'updated', warnings: res.warnings ?? [], added: describePatch(v.plan.patch) };
+        } catch (err) {
+          if (isTransient(err) && attempt < RETRIES) { await sleep(1500 * (attempt + 1)); continue; }
+          if (isTransient(err)) return { phase: 'unreachable', errors: ['could not reach the server'] };
+          const list = Array.isArray(err.details?.errors) && err.details.errors.length ? err.details.errors : [err.message];
+          return { phase: 'failed', errors: list, notFound: list.some((e) => /was not found/i.test(e)) };
+        }
+      }
+    }
+
     let githubUrl = row.githubUrl;
     const warnings = [];
     if (githubUrl && checkGithubUrl(githubUrl)) { warnings.push('The GitHub link was not usable, so it was left out.'); githubUrl = ''; }
@@ -153,8 +189,10 @@ export default function ImportStudents() {
       } catch (err) {
         if (isTransient(err) && attempt < RETRIES) { await sleep(1500 * (attempt + 1)); continue; }
         if (isTransient(err)) return { phase: 'unreachable', errors: ['could not reach the server'] };
+        // The reg no is already taken: that student is already added, which is not a problem.
+        if (err.status === 409 || err.code === 'ROLL_NUMBER_EXISTS') return { phase: 'exists', errors: [] };
         const list = Array.isArray(err.details?.errors) && err.details.errors.length ? err.details.errors : [err.message];
-        return { phase: err.status === 409 ? 'skipped' : 'failed', errors: list, notFound: list.some((e) => /was not found/i.test(e)) };
+        return { phase: 'failed', errors: list, notFound: list.some((e) => /was not found/i.test(e)) };
       }
     }
   };
@@ -170,7 +208,7 @@ export default function ImportStudents() {
       t.current = v.row.name;
       setStatus((s) => ({ ...s, [v.row.key]: { phase: 'working', errors: [] } }));
       setRun({ ...t });
-      const out = await saveOne(v.row);
+      const out = await saveOne(v);
       t.done++;
       if (out.phase === 'unreachable') {
         unreachable++; t.failed++;
@@ -179,7 +217,8 @@ export default function ImportStudents() {
         await sleep(3000);
       } else {
         unreachable = 0;
-        if (out.phase === 'done') t.fetched++;
+        if (out.phase === 'done' || out.phase === 'updated') t.fetched++;
+        else if (out.phase === 'exists') t.skipped++;
         else if (out.phase === 'unverified') t.failed++;
         else if (out.notFound) t.notFound++;
         else t.skipped++;
@@ -189,7 +228,7 @@ export default function ImportStudents() {
     }
     t.current = '';
     setRun({ ...t }); setRunDone(true); setRunning(false);
-    if (t.fetched) toast(`${t.fetched} student${t.fetched === 1 ? '' : 's'} imported`);
+    if (t.fetched) toast(`${t.fetched} student${t.fetched === 1 ? '' : 's'} saved`);
   };
 
   const downloadProblems = () => {
@@ -208,6 +247,12 @@ export default function ImportStudents() {
       const bad = row[field] && parseProfileUrl(platform, row[field]).error;
       return <input className={`cell-input ${bad ? 'invalid' : ''}`} value={row[field]} placeholder="(none)" onChange={(e) => editCell(row.key, field, e.target.value)} aria-label={`${platformName(platform)} link`} />;
     }
+    if (v.known && ['exists', 'update', 'updated'].includes(phase)) {
+      const added = v.plan?.patch?.[field];
+      if (added) return <span className="num">@{parseProfileUrl(platform, added).username} <span className="chip blue">new</span></span>;
+      const onFile = v.known.accounts.find((a) => a.platform === platform);
+      return onFile ? <span className="num">@{onFile.username}</span> : <span className="hint">—</span>;
+    }
     const p = row[field] && parseProfileUrl(platform, row[field]);
     if (!p || p.error) return <span className="hint">—</span>;
     const solved = st?.stats?.find((x) => x.platform === platform)?.solved;
@@ -216,13 +261,21 @@ export default function ImportStudents() {
 
   const badge = (v) => {
     if (v.phase === 'done') return <span className="chip ok"><Icon name="check" size={13} /> Imported</span>;
+    if (v.phase === 'updated') return <span className="chip ok"><Icon name="check" size={13} /> {v.st?.added ? `Added ${v.st.added}` : 'Updated'}</span>;
+    if (v.phase === 'exists') return <span className="chip"><Icon name="check" size={13} /> Already added</span>;
+    if (v.phase === 'update') return <span className="chip blue">Will add {describePatch(v.plan.patch)}</span>;
     if (v.phase === 'unverified') return <span className="chip warn">Saved, numbers pending</span>;
     if (v.phase === 'working') return <span className="chip blue">Fetching…</span>;
     if (v.phase === 'ready') return <span className="chip">Ready</span>;
-    return <span className="chip bad">{v.phase === 'skipped' ? 'Skipped' : 'Fix needed'}</span>;
+    return <span className="chip bad">Fix needed</span>;
   };
 
-  const counts = { ready: toSend.length, problems: view.filter((v) => ['fix', 'failed', 'skipped'].includes(v.phase)).length, done: view.filter((v) => v.phase === 'done' || v.phase === 'unverified').length };
+  const counts = {
+    ready: toSend.length,
+    problems: view.filter((v) => ['fix', 'failed', 'skipped'].includes(v.phase)).length,
+    done: view.filter((v) => ['done', 'updated', 'unverified'].includes(v.phase)).length,
+    already: view.filter((v) => v.phase === 'exists').length,
+  };
 
   return (
     <section className="card">
@@ -284,7 +337,7 @@ export default function ImportStudents() {
             tally={run}
             label="Importing"
             finished={runDone}
-            words={{ fetched: 'imported', notFound: 'profile not found', failed: 'saved without numbers', skipped: 'skipped' }}
+            words={{ fetched: 'saved', notFound: 'profile not found', failed: 'saved without numbers', skipped: 'already added' }}
             stopNote={!runDone ? 'Each student is saved and their LeetCode and HackerRank numbers are fetched, then the next one starts. Keep this page open.' : null}
           />
           {!runDone && <div><button className="btn ghost sm" onClick={() => { stopRef.current = true; }}>Stop after this student</button></div>}
@@ -294,13 +347,14 @@ export default function ImportStudents() {
       {rows.length > 0 && !setup && (
         <div style={{ marginTop: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-            <b>{counts.done} imported · {counts.ready} ready · {counts.problems} need fixing</b>
+            <b>{counts.done} imported · {counts.already} already added · {counts.ready} ready · {counts.problems} need fixing</b>
+            {checkingExisting && <span className="hint" role="status">Checking who is already added…</span>}
             <div className="spacer" />
             {flagged.length > 0 && !running && (
               <button className="btn ghost sm" onClick={downloadProblems} title="An Excel file of the students that need attention, to fix and upload again"><Icon name="download" /> List of {flagged.length} needing attention</button>
             )}
-            <button className="btn" onClick={() => importRows(toSend)} disabled={running || !toSend.length}>
-              {running ? 'Importing…' : counts.done ? `Import the other ${toSend.length}` : `Import ${toSend.length} students`}
+            <button className="btn" onClick={() => importRows(toSend)} disabled={running || checkingExisting || !toSend.length}>
+              {running ? 'Importing…' : counts.done ? `Import the other ${toSend.length}` : `Import ${toSend.length} student${toSend.length === 1 ? '' : 's'}`}
             </button>
           </div>
           <div className="table-wrap">
@@ -314,7 +368,9 @@ export default function ImportStudents() {
                       <td style={{ minWidth: 170 }}>
                         {badge(v)}
                         {v.errors.map((e, i) => <span className="row-err" key={i}>{e}</span>)}
-                        {(r.notes || []).map((n) => <span className="row-note" key={n.platform}>{n.text}</span>)}
+                        {!v.known && (r.notes || []).map((n) => <span className="row-note" key={n.platform}>{n.text}</span>)}
+                        {v.known && ['exists', 'update'].includes(v.phase) && (v.plan?.notes || []).map((n, i) => <span className="hint" style={{ display: 'block' }} key={i}>{n}</span>)}
+                        {v.phase === 'exists' && !(v.plan?.notes || []).length && <span className="hint" style={{ display: 'block' }}>Nothing to change.</span>}
                         {(v.st?.warnings || []).map((w, i) => <span className="hint" style={{ display: 'block' }} key={i}>{w}</span>)}
                       </td>
                       <td className="name-cell">{r.name || '—'}<small>{r.rollNo}</small></td>
