@@ -6,7 +6,10 @@ import { loadUser } from './auth.js';
 // Admin view of a user: like the login response, but includes whether the account is disabled.
 const adminView = ({ tokenVersion, ...rest }) => rest;
 
-const USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
+// A short username (hod.it) or an email address (hod.it@rmkec.ac.in). Stored lowercase. Nothing is ever sent to an
+// email address: it is only a name to sign in with, and an admin sets and resets the password.
+const USERNAME_RE = /^(?:[a-z0-9._-]{3,32}|[a-z0-9._+-]{1,64}@[a-z0-9-]+(?:\.[a-z0-9-]+)+)$/;
+const USERNAME_MAX = 100;
 
 function normalizeScopes(role, scopes) {
   if (role === 'admin') {
@@ -45,7 +48,7 @@ export async function listUsers(db) {
 
 export async function createUser(db, { username, displayTitle, role, password, scopes }) {
   const name = String(username).trim().toLowerCase();
-  if (!USERNAME_RE.test(name)) throw bad('username must be 3-32 characters: letters, digits, dot, dash or underscore');
+  if (name.length > USERNAME_MAX || !USERNAME_RE.test(name)) throw bad('username must be an email address like hod.it@rmkec.ac.in, or 3-32 characters: letters, digits, dot, dash or underscore');
 
   const generated = !password;
   const plain = generated ? generatePassword() : password;
