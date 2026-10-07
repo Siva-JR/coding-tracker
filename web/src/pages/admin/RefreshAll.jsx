@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../../api/index.js';
 import { Icon } from '../../components/Icons.jsx';
 import ScrapeProgress from '../../components/ScrapeProgress.jsx';
 import { newTally, retryFailed, scrapeSequentially } from '../../lib/scrape.js';
+import { allStudents } from '../../lib/students.js';
 import { Modal } from './shared.jsx';
 
-// Every student, page by page (the list endpoint returns at most 100 at a time).
-async function allStudents() {
-  const out = [];
-  for (let page = 1; ; page++) {
-    const r = await api.admin.students({ page, pageSize: 100 });
-    out.push(...r.items);
-    if (out.length >= r.total || !r.items.length) return out;
-  }
-}
 const neverFetched = (s) => s.accounts.some((a) => a.state === 'active' && !a.lastOkAt);
 
 /**
