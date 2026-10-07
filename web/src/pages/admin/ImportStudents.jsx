@@ -82,10 +82,10 @@ export default function ImportStudents() {
     return { row: r, index, phase, errors, st, known, plan };
   });
   // Problems first, then anything not saved yet, then the students that went in fine or were already there.
-  const rank = { fix: 0, failed: 0, skipped: 0, unverified: 1, working: 2, update: 3, ready: 3, exists: 4, updated: 4, done: 4 };
+  const rank = { fix: 0, failed: 0, skipped: 0, incomplete: 1, unverified: 1, working: 2, update: 3, ready: 3, exists: 4, updated: 4, done: 4 };
   const sorted = [...view].sort((a, b) => rank[a.phase] - rank[b.phase] || a.index - b.index);
   const toSend = view.filter((v) => v.phase === 'ready' || v.phase === 'update');
-  const flagged = view.filter((v) => ['fix', 'failed', 'skipped', 'unverified'].includes(v.phase) || (v.row.notes?.length && !['exists', 'update', 'updated'].includes(v.phase)));
+  const flagged = view.filter((v) => ['fix', 'failed', 'skipped', 'unverified'].includes(v.phase) || v.phase === 'incomplete' || (v.row.notes?.length && !['exists', 'update', 'updated'].includes(v.phase)));
 
   // ── reading the file ────────────────────────────────────────────────
   const normDept = (v) => {
@@ -234,7 +234,7 @@ export default function ImportStudents() {
   const downloadProblems = () => {
     const lines = flagged.map((v) => {
       const r = v.row;
-      const problems = [...(r.notes || []).map((n) => n.text), ...v.errors, ...(v.st?.warnings || [])];
+      const problems = [...(r.notes || []).map((n) => n.text), ...(v.phase === 'incomplete' ? [`Already added. ${v.plan.missingText}`] : []), ...v.errors, ...(v.st?.warnings || [])];
       return [r.name, r.rollNo, r.deptCode, r.batchYear, r.leetcodeUrl, r.hackerrankUrl, r.githubUrl || '', problems.join(' | ')];
     });
     downloadXlsx('students-needing-attention.xlsx', problemsWorkbook(lines));
@@ -243,7 +243,10 @@ export default function ImportStudents() {
   // ── rendering ───────────────────────────────────────────────────────
   const linkCell = (v, platform, field) => {
     const { row, phase, st } = v;
-    if (phase === 'fix' || phase === 'failed' || phase === 'skipped') {
+    if (phase === 'fix' || phase === 'incomplete' || phase === 'failed' || phase === 'skipped') {
+      if (v.known && phase === 'incomplete' && v.known.accounts.some((a) => a.platform === platform && a.state === 'active')) {
+        return <span className="num">@{v.known.accounts.find((a) => a.platform === platform).username}</span>;
+      }
       const bad = row[field] && parseProfileUrl(platform, row[field]).error;
       return <input className={`cell-input ${bad ? 'invalid' : ''}`} value={row[field]} placeholder="(none)" onChange={(e) => editCell(row.key, field, e.target.value)} aria-label={`${platformName(platform)} link`} />;
     }
@@ -262,6 +265,7 @@ export default function ImportStudents() {
   const badge = (v) => {
     if (v.phase === 'done') return <span className="chip ok"><Icon name="check" size={13} /> Imported</span>;
     if (v.phase === 'updated') return <span className="chip ok"><Icon name="check" size={13} /> {v.st?.added ? `Added ${v.st.added}` : 'Updated'}</span>;
+    if (v.phase === 'incomplete') return <span className="chip warn"><Icon name="alert" size={13} /> Link missing</span>;
     if (v.phase === 'exists') return <span className="chip"><Icon name="check" size={13} /> Already added</span>;
     if (v.phase === 'update') return <span className="chip blue">Will add {describePatch(v.plan.patch)}</span>;
     if (v.phase === 'unverified') return <span className="chip warn">Saved, numbers pending</span>;
@@ -274,6 +278,7 @@ export default function ImportStudents() {
     ready: toSend.length,
     problems: view.filter((v) => ['fix', 'failed', 'skipped'].includes(v.phase)).length,
     done: view.filter((v) => ['done', 'updated', 'unverified'].includes(v.phase)).length,
+    missingLink: view.filter((v) => v.phase === 'incomplete').length,
     already: view.filter((v) => v.phase === 'exists').length,
   };
 
@@ -347,7 +352,7 @@ export default function ImportStudents() {
       {rows.length > 0 && !setup && (
         <div style={{ marginTop: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-            <b>{counts.done} imported · {counts.already} already added · {counts.ready} ready · {counts.problems} need fixing</b>
+            <b>{counts.done} imported · {counts.already} already added · {counts.ready} ready · {counts.problems} need fixing{counts.missingLink > 0 && <> · {counts.missingLink} still missing a link</>}</b>
             {checkingExisting && <span className="hint" role="status">Checking who is already added…</span>}
             <div className="spacer" />
             {flagged.length > 0 && !running && (
@@ -369,7 +374,8 @@ export default function ImportStudents() {
                         {badge(v)}
                         {v.errors.map((e, i) => <span className="row-err" key={i}>{e}</span>)}
                         {!v.known && (r.notes || []).map((n) => <span className="row-note" key={n.platform}>{n.text}</span>)}
-                        {v.known && ['exists', 'update'].includes(v.phase) && (v.plan?.notes || []).map((n, i) => <span className="hint" style={{ display: 'block' }} key={i}>{n}</span>)}
+                        {v.phase === 'incomplete' && <span className="hint" style={{ display: 'block' }}>Already added. {v.plan.missingText}; add it in the sheet or type it here.</span>}
+                        {v.known && ['exists', 'update', 'incomplete'].includes(v.phase) && (v.plan?.notes || []).map((n, i) => <span className="hint" style={{ display: 'block' }} key={i}>{n}</span>)}
                         {v.phase === 'exists' && !(v.plan?.notes || []).length && <span className="hint" style={{ display: 'block' }}>Nothing to change.</span>}
                         {(v.st?.warnings || []).map((w, i) => <span className="hint" style={{ display: 'block' }} key={i}>{w}</span>)}
                       </td>
