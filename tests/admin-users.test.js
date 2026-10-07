@@ -208,3 +208,46 @@ test('admins can add departments; codes are upper-cased and unique', async () =>
   assert.equal((await admin.post('/api/admin/departments', { name: 'x', code: 'X' })).status, 400);
   assert.deepEqual((await admin.get('/api/departments')).body.map((d) => d.code), ['CSE', 'IT', 'MECH']);
 });
+
+test('an email address can be the username, is stored lowercase, and signs in in any case', async () => {
+  const res = await create({ username: 'HoD.IT@RMKEC.AC.IN', displayTitle: 'HoD - IT', role: 'viewer', scopes: [{ deptId: IT }] });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.user.username, 'hod.it@rmkec.ac.in');
+  assert.ok(res.body.temporaryPassword);
+
+  const c = app.client();
+  const login = await c.post('/api/auth/login', { username: ' Hod.It@rmkec.ac.in ', password: res.body.temporaryPassword });
+  assert.equal(login.status, 200);
+  assert.equal(login.body.user.username, 'hod.it@rmkec.ac.in');
+  assert.equal(login.body.user.mustChangePassword, true);
+
+  const dup = await create({ username: 'hod.it@rmkec.ac.in', role: 'viewer', scopes: [{ deptId: IT }] });
+  assert.equal(dup.status, 409);
+  assert.equal(dup.body.error.code, 'USERNAME_TAKEN');
+});
+
+test('email-style usernames work with scopes, password reset and the lockout like any other', async () => {
+  const made = await create({ username: 'hod.cse@rmkec.ac.in', role: 'viewer', password: 'Password123', scopes: [{ deptId: CSE }] });
+  assert.equal(made.status, 201);
+  const id = made.body.user.id;
+  const c = app.client();
+  assert.equal((await c.post('/api/auth/login', { username: 'hod.cse@rmkec.ac.in', password: 'Password123' })).status, 200);
+  assert.deepEqual((await c.get('/api/departments')).status, 403, 'a forced password change comes first');
+
+  const reset = await admin.post(`/api/admin/users/${id}/reset-password`, {});
+  assert.equal(reset.status, 200);
+  assert.equal((await app.client().post('/api/auth/login', { username: 'hod.cse@rmkec.ac.in', password: reset.body.temporaryPassword })).status, 200);
+
+  const wrong = app.client();
+  for (let i = 0; i < 5; i += 1) await wrong.post('/api/auth/login', { username: 'hod.cse@rmkec.ac.in', password: 'nope-nope' });
+  assert.equal((await wrong.post('/api/auth/login', { username: 'hod.cse@rmkec.ac.in', password: reset.body.temporaryPassword })).status, 423);
+});
+
+test('usernames that are neither a short name nor a plausible email are refused', async () => {
+  for (const username of ['a@b', '@rmkec.ac.in', 'hod@', 'two@@rmkec.ac.in', 'hod it@rmkec.ac.in', 'hod@rmkec', 'hod@.ac.in', 'hod@rmkec..in', 'hod@rm_kec.ac.in',
+    `${'a'.repeat(65)}@rmkec.ac.in`, `hod@${'a'.repeat(100)}.ac.in`, 'tag<script>@rmkec.ac.in']) {
+    const res = await create({ username, role: 'viewer', scopes: [{ deptId: IT }] });
+    assert.equal(res.status, 400, username);
+    assert.match(res.body.error.message, /username/, username);
+  }
+});

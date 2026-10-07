@@ -52,7 +52,7 @@ export default function Login() {
                     <label htmlFor="u">Username</label>
                     <div className="input-wrap">
                       <Icon name="user" />
-                      <input id="u" className="input" placeholder="Enter your username" autoComplete="username" autoCapitalize="none" spellCheck="false" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
+                      <input id="u" className="input" placeholder="Username or email" autoComplete="username" autoCapitalize="none" spellCheck="false" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
                     </div>
                   </div>
                   <div className="field">

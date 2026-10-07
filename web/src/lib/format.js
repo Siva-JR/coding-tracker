@@ -10,6 +10,9 @@ export function greeting(date = new Date()) {
   return 'Good Night';
 }
 
+// Sign-in names: a short username shows as "@asha"; an email address already has its @, so it is shown as it is.
+export const handle = (username) => (!username ? '' : username.includes('@') ? username : `@${username}`);
+
 // Job titles are typed by hand and stored as given, so tidy the ones we know are often written in capitals:
 // the head of department is "HoD", not "HOD".
 export const niceTitle = (t) => (t || '').replace(/\bHOD\b/gi, 'HoD');

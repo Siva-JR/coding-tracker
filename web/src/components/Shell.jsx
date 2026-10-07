@@ -4,7 +4,7 @@ import { Icon } from './Icons.jsx';
 import { Blobs } from './Decor.jsx';
 import { useAuth } from '../context/Auth.jsx';
 import { api, isSample } from '../api/index.js';
-import { longDate, niceTitle } from '../lib/format.js';
+import { handle, longDate, niceTitle } from '../lib/format.js';
 import { describeScopes } from '../lib/access.js';
 import { BrandBar, Footer } from './Brand.jsx';
 import { useScope } from '../context/Scope.jsx';
@@ -92,7 +92,7 @@ export default function Shell() {
               <Popover id="account" open={pop === 'account'} onClose={() => setPop(null)}>
                 <h4>{niceTitle(user.displayTitle)}</h4>
                 <p className="sub">
-                  @{user.username}
+                  {handle(user.username)}
                   <br />{describeScopes(user)}
                 </p>
                 <button className="btn ghost sm" onClick={() => signOut()}><Icon name="logout" /> Sign out</button>

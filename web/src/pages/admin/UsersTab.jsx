@@ -6,7 +6,7 @@ import { useScope } from '../../context/Scope.jsx';
 import { useToast } from '../../components/Toasts.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { ErrorBox, Modal } from './shared.jsx';
-import { niceTitle } from '../../lib/format.js';
+import { handle, niceTitle } from '../../lib/format.js';
 import { yearBatchLabel, yearLabel } from '../../lib/yearOfStudy.js';
 
 const scopeLabel = (s) => `${s.deptCode || 'All departments'} · ${s.year ? yearLabel(s.year) : 'All Years'}`;
@@ -108,7 +108,7 @@ export default function UsersTab() {
           <tbody>
             {data?.map((u) => (
               <tr key={u.id} style={{ opacity: u.disabled ? 0.55 : 1 }}>
-                <td className="name-cell">@{u.username}
+                <td className="name-cell">{handle(u.username)}
                   {u.disabled && <span className="chip bad" style={{ marginLeft: 8 }}>disabled</span>}
                   {u.mustChangePassword && <span className="chip warn" style={{ marginLeft: 8 }}>must change password</span>}
                 </td>
@@ -127,11 +127,11 @@ export default function UsersTab() {
       </div>
 
       {form && (
-        <Modal wide title={form.mode === 'create' ? 'New user' : `Edit @${form.username}`} onClose={() => setForm(null)}
+        <Modal wide title={form.mode === 'create' ? 'New user' : `Edit ${handle(form.username)}`} onClose={() => setForm(null)}
           actions={<><button className="btn ghost" onClick={() => setForm(null)}>Cancel</button><button className="btn" onClick={submit} disabled={saving}>{saving ? 'Saving…' : form.mode === 'create' ? 'Create' : 'Save'}</button></>}>
           <ErrorBox err={formError} style={{ marginTop: 10 }} />
           <div className="form-grid" style={{ marginTop: 14 }}>
-            {form.mode === 'create' && <div className="field"><label htmlFor="u-n">Username</label><input id="u-n" className="input" autoCapitalize="none" spellCheck="false" value={form.username} onChange={set('username')} /><span className="hint">3–32 characters: letters, digits, dot, dash, underscore.</span></div>}
+            {form.mode === 'create' && <div className="field"><label htmlFor="u-n">Username or email</label><input id="u-n" className="input" autoCapitalize="none" autoComplete="off" spellCheck="false" placeholder="hod.it@rmkec.ac.in" value={form.username} onChange={set('username')} /><span className="hint">Use their email address, or a short name (letters, digits, dot, dash, underscore). It is only used to sign in; nothing is emailed.</span></div>}
             <div className="field"><label htmlFor="u-t">Display title</label><input id="u-t" className="input" placeholder="HoD - IT" value={form.displayTitle} onChange={set('displayTitle')} /></div>
             <div className="field"><label htmlFor="u-r">Role</label>
               <select id="u-r" className="input" value={form.role} onChange={set('role')} disabled={form.mode === 'edit' && form.id === me.id}>
@@ -144,7 +144,7 @@ export default function UsersTab() {
       )}
 
       {reset && (
-        <Modal title={`Reset password for @${reset.user.username}`} onClose={() => setReset(null)}
+        <Modal title={`Reset password for ${handle(reset.user.username)}`} onClose={() => setReset(null)}
           actions={<><button className="btn ghost" onClick={() => setReset(null)}>Cancel</button><button className="btn" onClick={doReset} disabled={saving}>{saving ? 'Resetting…' : 'Reset password'}</button></>}>
           <ErrorBox err={formError} style={{ marginTop: 10 }} />
           <div className="field" style={{ marginTop: 14 }}><label htmlFor="rp">New password (optional)</label>
@@ -156,8 +156,8 @@ export default function UsersTab() {
       {shown && (
         <Modal title={shown.value ? 'Temporary password' : 'Password set'} onClose={() => setShown(null)} actions={<button className="btn" onClick={() => setShown(null)}>Done</button>}>
           {shown.value
-            ? <><p style={{ color: 'var(--ink-2)', marginTop: 6 }}>Share this with <b>@{shown.who}</b> now. It is shown only once. {shown.note}</p><div className="temp-pw">{shown.value}</div></>
-            : <p style={{ color: 'var(--ink-2)', marginTop: 6 }}>The password you chose is set for <b>@{shown.who}</b>. {shown.note}</p>}
+            ? <><p style={{ color: 'var(--ink-2)', marginTop: 6 }}>Share this with <b>{handle(shown.who)}</b> now. It is shown only once. {shown.note}</p><div className="temp-pw">{shown.value}</div></>
+            : <p style={{ color: 'var(--ink-2)', marginTop: 6 }}>The password you chose is set for <b>{handle(shown.who)}</b>. {shown.note}</p>}
         </Modal>
       )}
     </section>
