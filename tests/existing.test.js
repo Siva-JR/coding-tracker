@@ -52,10 +52,20 @@ test('a record missing a link needs attention when the sheet\'s link is not a pr
   assert.equal(dashboard.phase, 'fix');
 });
 
-test('an empty cell for a missing link adds nothing and is not a problem', () => {
+test('an empty cell for a link the record also lacks is not "already added": the student is incomplete', () => {
   const plan = planForExisting(row({ notes: [missing('leetcode')] }), onFile([acc('hackerrank', 'asha_h')]));
-  assert.equal(plan.phase, 'exists');
+  assert.equal(plan.phase, 'incomplete');
   assert.deepEqual(plan.errors, []);
+  assert.deepEqual(plan.missing, ['LeetCode']);
+  assert.equal(plan.missingText, 'Still no LeetCode link');
+  assert.equal(planForExisting(row({}), onFile([acc('leetcode', 'a')])).missingText, 'Still no HackerRank link');
+  assert.equal(planForExisting(row({}), onFile([])).missingText, 'Still no LeetCode or HackerRank link');
+});
+
+test('adding one link while another is still missing is an update that says what is left', () => {
+  const plan = planForExisting(row({ leetcodeUrl: LC }), onFile([]));
+  assert.equal(plan.phase, 'update');
+  assert.match(plan.notes[0], /Still no HackerRank link after this/);
 });
 
 test('a link on file that was not found counts as missing, so a proper new link replaces it and a bad one is flagged', () => {
@@ -73,9 +83,9 @@ test('one proper link and one improper link: the student still needs attention',
 });
 
 test('a GitHub link fills a gap but never replaces one, and a bad one is ignored', () => {
-  const full = onFile([acc('leetcode', 'asha1')], 'https://github.com/old');
+  const full = onFile([acc('leetcode', 'asha1'), acc('hackerrank', 'asha_h')], 'https://github.com/old');
   assert.equal(planForExisting(row({ githubUrl: 'https://github.com/new' }), full).phase, 'exists');
-  const bare = onFile([acc('leetcode', 'asha1')], null);
+  const bare = onFile([acc('leetcode', 'asha1'), acc('hackerrank', 'asha_h')], null);
   const add = planForExisting(row({ githubUrl: 'github.com/asha-dev' }), bare);
   assert.equal(add.phase, 'update');
   assert.deepEqual(add.patch, { githubUrl: 'github.com/asha-dev' });
