@@ -3,6 +3,8 @@
 //
 //   deptIds: null = every department, otherwise the department ids covered by any scope
 //   years:   null = every year of study, otherwise the years (only when *every* scope names a year)
+import { yearLabel } from './yearOfStudy.js';
+
 export function accessOf(user) {
   if (!user || user.role === 'admin') return { deptIds: null, years: null };
   const scopes = user.scopes || [];
@@ -21,6 +23,6 @@ export function scopeCovers(user, { deptId, yearOfStudy }) {
 
 export function describeScopes(user) {
   if (user.role === 'admin') return 'Full access, can manage data';
-  const parts = (user.scopes || []).map((s) => `${s.deptCode || 'All departments'} · ${s.year ? `year ${s.year}` : 'all years'}`);
+  const parts = (user.scopes || []).map((s) => `${s.deptCode || 'All departments'} · ${s.year ? yearLabel(s.year) : 'All Years'}`);
   return parts.length ? parts.join(', ') : 'No access granted';
 }

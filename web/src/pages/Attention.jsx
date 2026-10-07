@@ -4,6 +4,7 @@ import { api } from '../api/index.js';
 import { useAsync } from '../lib/hooks.js';
 import { useScope } from '../context/Scope.jsx';
 import { shortDate } from '../lib/format.js';
+import { romanYear } from '../lib/yearOfStudy.js';
 import SampleBadge from '../components/SampleBadge.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { Scribble } from '../components/Decor.jsx';
@@ -65,7 +66,7 @@ export default function Attention() {
                   <tr key={`${r.studentId}-${r.platform || i}`} className="click" onClick={() => nav(`/student/${r.studentId}`)}>
                     <td className="name-cell">{r.name}<small>{r.rollNo}</small></td>
                     <td>{r.deptCode}</td>
-                    <td>{r.yearOfStudy}</td>
+                    <td>{romanYear(r.yearOfStudy)}</td>
                     {tab === 'inactive' ? (
                       <><td className="r num">{r.leetcode ?? '—'}</td><td className="r num">{r.hackerrank ?? '—'}</td></>
                     ) : (

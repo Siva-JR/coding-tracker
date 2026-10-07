@@ -7,8 +7,9 @@ import { useToast } from '../../components/Toasts.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { ErrorBox, Modal } from './shared.jsx';
 import { niceTitle } from '../../lib/format.js';
+import { yearBatchLabel, yearLabel } from '../../lib/yearOfStudy.js';
 
-const scopeLabel = (s) => `${s.deptCode || 'All departments'} · ${s.year ? `year ${s.year}` : 'all years'}`;
+const scopeLabel = (s) => `${s.deptCode || 'All departments'} · ${s.year ? yearLabel(s.year) : 'All Years'}`;
 const BLANK = { username: '', displayTitle: '', role: 'viewer', password: '', scopes: [{ deptId: '', year: '' }] };
 
 function ScopeEditor({ scopes, onChange, departments }) {
@@ -24,8 +25,8 @@ function ScopeEditor({ scopes, onChange, departments }) {
               {departments.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
             </select>
             <select className="input" style={{ height: 40, width: 140 }} value={s.year} onChange={(e) => set(i, 'year', e.target.value)} aria-label={`Scope ${i + 1} year`}>
-              <option value="">All years</option>
-              {[1, 2, 3, 4].map((y) => <option key={y} value={y}>Year {y}</option>)}
+              <option value="">All Years</option>
+              {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{yearBatchLabel(y)}</option>)}
             </select>
             <button type="button" className="icon-btn danger" onClick={() => onChange(scopes.filter((_, n) => n !== i))} disabled={scopes.length === 1} aria-label={`Remove scope ${i + 1}`}><Icon name="x" /></button>
           </div>

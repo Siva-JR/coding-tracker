@@ -10,7 +10,7 @@ import { downloadXlsx, problemsWorkbook, templateWorkbook } from '../../lib/xlsx
 import { newTally } from '../../lib/scrape.js';
 import { parseProfileUrl } from '../../lib/profileUrl.js';
 import { checkGithubUrl, githubHandle } from '../../lib/github.js';
-import { batchYearFor } from '../../lib/yearOfStudy.js';
+import { batchYearFor, yearBatchLabel, yearLabel } from '../../lib/yearOfStudy.js';
 import { num } from '../../lib/format.js';
 import { ErrorBox, platformName } from './shared.jsx';
 
@@ -112,7 +112,7 @@ export default function ImportStudents() {
     const { found, idx, deptCode, year } = setup;
     const { name, res } = found[idx];
     const missing = [setup.needDept && 'department', setup.needBatch && 'batch'].filter(Boolean).join(' or ');
-    const used = [setup.needDept && `department ${deptCode}`, setup.needBatch && `batch ${batchYearFor(Number(year))} (year ${year})`].filter(Boolean).join(' and ');
+    const used = [setup.needDept && `department ${deptCode}`, setup.needBatch && `batch ${batchYearFor(Number(year))} (${yearLabel(Number(year))})`].filter(Boolean).join(' and ');
     begin(applyDefaults(res.rows, { deptCode, yearOfStudy: year }), `${describe(res, name)} The sheet has no ${missing} column, so every row uses ${used}.`);
   };
 
@@ -265,7 +265,7 @@ export default function ImportStudents() {
               <div className="field"><label htmlFor="sy">Year of study</label>
                 <select id="sy" className="input" value={setup.year} onChange={(e) => setSetup({ ...setup, year: e.target.value })}>
                   <option value="">Select…</option>
-                  {[1, 2, 3, 4].map((y) => <option key={y} value={y}>Year {y} (batch {batchYearFor(y)})</option>)}
+                  {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{yearBatchLabel(y)}</option>)}
                 </select></div>
             )}
           </div>

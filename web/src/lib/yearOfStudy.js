@@ -12,5 +12,10 @@ export function batchYearFor(year, date = new Date()) {
   return endYearFor(date) + (4 - year);
 }
 
-const ORD = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' };
-export const ordinalYear = (y) => (ORD[y] ? `${ORD[y]} year` : '—');
+const ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
+/** "III" for use in narrow table columns */
+export const romanYear = (y) => ROMAN[y] ?? '—';
+/** "III Year" */
+export const yearLabel = (y) => (ROMAN[y] ? `${ROMAN[y]} Year` : '—');
+/** "III Year (2028)": the year of study with the batch it belongs to right now */
+export const yearBatchLabel = (y, date = new Date()) => (ROMAN[y] ? `${yearLabel(y)} (${batchYearFor(y, date)})` : '—');

@@ -13,7 +13,7 @@ export const departments = () => get('/api/departments');
 export const github = (q) => get('/api/github', { deptId: q.deptId, year: q.year, q: q.q, limit: q.limit, offset: q.offset });
 
 export const leaderboard = (q) => get('/api/leaderboard', {
-  platform: q.platform, sort: q.sort, year: q.year, deptId: q.deptId, limit: q.limit,
+  platform: q.platform, sort: q.sort, year: q.year, deptId: q.deptId, limit: q.limit, q: q.q,
 }).then((data) => ({
   ...data,
   count: data.total ?? data.entries.length,

@@ -7,6 +7,7 @@ import { Icon } from '../../components/Icons.jsx';
 import { parseProfileUrl } from '../../lib/profileUrl.js';
 import { checkGithubUrl, githubHandle } from '../../lib/github.js';
 import { shortDate } from '../../lib/format.js';
+import { romanYear } from '../../lib/yearOfStudy.js';
 import { ErrorBox, Modal, platformName } from './shared.jsx';
 import RefreshAll from './RefreshAll.jsx';
 
@@ -122,7 +123,7 @@ export default function StudentsTab() {
               <tr key={s.id}>
                 <td className="name-cell">{s.name}<small>{s.rollNo}</small></td>
                 <td>{s.deptCode}</td>
-                <td>{s.yearOfStudy}</td>
+                <td>{romanYear(s.yearOfStudy)}</td>
                 <td><AccountCell account={s.accounts.find((a) => a.platform === 'leetcode')} /></td>
                 <td><AccountCell account={s.accounts.find((a) => a.platform === 'hackerrank')} /></td>
                 <td>{s.githubUrl ? <a href={s.githubUrl} target="_blank" rel="noreferrer noopener" style={{ fontWeight: 600 }}>{githubHandle(s.githubUrl) || 'link'}</a> : <span className="hint">—</span>}</td>
