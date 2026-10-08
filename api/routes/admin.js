@@ -33,6 +33,7 @@ const VALIDATE_MAX_ROWS = 10;
 const IMPORT_MAX_ROWS = 200;
 
 const departmentSchema = z.object({ name: z.string().trim().min(2).max(100), code: z.string().trim().min(2).max(12) });
+const departmentChangeSchema = departmentSchema.partial().refine((v) => v.name !== undefined || v.code !== undefined, { message: 'send a name, a code or both' });
 
 export function adminRoutes({ db, sessionSecret, fetchProfile, now }) {
   const router = Router();
@@ -59,6 +60,23 @@ export function adminRoutes({ db, sessionSecret, fetchProfile, now }) {
     try {
       const { rows: [dept] } = await db.query('insert into departments (name, code) values ($1, upper($2)) returning id, name, code', [name, code]);
       res.status(201).json(dept);
+    } catch (err) {
+      if (err.code === '23505') throw new HttpError(409, 'DEPARTMENT_EXISTS', 'A department with that name or code already exists');
+      throw err;
+    }
+  }));
+
+  // Rename a department. Students and staff scopes point at its id, so nothing else changes.
+  router.patch('/departments/:id', asyncRoute(async (req, res) => {
+    const id = parseInteger(req.params.id, 'id', { min: 1, max: 2147483647 });
+    const { name, code } = parseBody(departmentChangeSchema, req.body);
+    try {
+      const { rows: [dept] } = await db.query(
+        'update departments set name = coalesce($2, name), code = coalesce(upper($3), code) where id = $1 returning id, name, code',
+        [id, name ?? null, code ?? null],
+      );
+      if (!dept) throw new HttpError(404, 'NOT_FOUND', 'Department not found');
+      res.json(dept);
     } catch (err) {
       if (err.code === '23505') throw new HttpError(409, 'DEPARTMENT_EXISTS', 'A department with that name or code already exists');
       throw err;

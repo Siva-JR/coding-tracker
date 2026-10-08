@@ -571,6 +571,20 @@ export async function createDepartment(user, name, code) {
   return { id: d.id, name: d.name, code: d.code };
 }
 
+export async function updateDepartment(user, id, { name, code }) {
+  assertAdmin(user);
+  await wait(300);
+  const d = DEPARTMENTS.find((x) => x.id === Number(id));
+  if (!d) throw new ApiError(404, 'NOT_FOUND', 'Department not found');
+  const c = code === undefined ? d.code : String(code).trim().toUpperCase();
+  const n = name === undefined ? d.name : String(name).trim();
+  if (DEPARTMENTS.some((x) => x !== d && (x.code === c || x.name.toLowerCase() === n.toLowerCase()))) {
+    throw new ApiError(409, 'DEPARTMENT_EXISTS', 'A department with that name or code already exists');
+  }
+  d.code = c; d.name = n;
+  return { id: d.id, name: d.name, code: d.code };
+}
+
 export { DEMO_PASSWORD };
 
 // ── refresh now (any signed-in user, within their scopes) ───────────────

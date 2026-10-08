@@ -33,6 +33,7 @@ export const admin = {
   updateUser: (id, body) => patch(`/api/admin/users/${id}`, body),
   resetPassword: (id, password) => post(`/api/admin/users/${id}/reset-password`, password ? { password } : {}),
   createDepartment: (name, code) => post('/api/admin/departments', { name, code }),
+  updateDepartment: (id, body) => patch(`/api/admin/departments/${id}`, body),
 
   students: (q) => get('/api/admin/students', q),
   addStudent: (row) => post('/api/admin/students', row, { timeout: 45000 }),
