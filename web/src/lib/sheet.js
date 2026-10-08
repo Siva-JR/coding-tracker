@@ -55,8 +55,8 @@ function titleHints(rows, headerRow, departments) {
 const PLATFORM_NAME = { leetcode: 'LeetCode', hackerrank: 'HackerRank' };
 
 // A cell can show one thing and link to another. Prefer whichever is a real profile link.
-// When nothing usable is there, the link is left empty and a note says why, so the student can still
-// be imported with the other platform's link and the gap stays visible.
+// When nothing usable is there, a note says why. A missing link stays empty; a link that is not a proper
+// profile link is kept as typed so it is flagged, and the student is not imported until it is fixed.
 function pickLink(platform, cell) {
   const isGood = platform === 'github' ? (c) => !checkGithubUrl(c) : (c) => !parseProfileUrl(platform, c).error;
   const candidates = cell ? [...cell.links, cell.text, ...(cell.text.match(/https?:\/\/\S+/g) || [])].filter(Boolean) : [];
@@ -65,8 +65,9 @@ function pickLink(platform, cell) {
   if (platform === 'github') return { url: '' };
   const link = candidates.find((c) => /^https?:\/\//i.test(c) || /\.com/i.test(c));
   const why = link ? 'the link has no username (it points to the site, not a profile)' : 'no link in the sheet';
-  // kind: 'improper' = something was typed but it is not a profile link; 'missing' = the cell was empty or plain text
-  return { url: '', note: { platform, kind: link ? 'improper' : 'missing', text: `${PLATFORM_NAME[platform]}: ${why}` } };
+  // kind: 'improper' = something was typed but it is not a profile link; 'missing' = the cell was empty or plain text.
+  // An improper link is kept in the row, so it is shown, checked and can be corrected in the table.
+  return { url: link || '', note: { platform, kind: link ? 'improper' : 'missing', text: `${PLATFORM_NAME[platform]}: ${why}` } };
 }
 
 /**
