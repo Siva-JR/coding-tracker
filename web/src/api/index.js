@@ -86,6 +86,7 @@ export const api = {
     updateUser: (id, b) => mock.updateUser(u(), id, b),
     resetPassword: (id, pw) => mock.resetPassword(u(), id, pw),
     createDepartment: (name, code) => mock.createDepartment(u(), name, code),
+    updateDepartment: (id, b) => mock.updateDepartment(u(), id, b),
     students: (q) => mock.adminStudents(u(), q),
     addStudent: (row) => mock.addStudent(u(), row),
     updateStudent: (id, p) => mock.updateStudent(u(), id, p),

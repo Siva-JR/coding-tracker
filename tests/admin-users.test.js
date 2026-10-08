@@ -209,6 +209,20 @@ test('admins can add departments; codes are upper-cased and unique', async () =>
   assert.deepEqual((await admin.get('/api/departments')).body.map((d) => d.code), ['CSE', 'IT', 'MECH']);
 });
 
+test('a department can be renamed; students keep it, and clashes or empty changes are refused', async () => {
+  const res = await admin.patch(`/api/admin/departments/${IT}`, { code: 'ict', name: 'Information and Communication Technology' });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { id: IT, code: 'ICT', name: 'Information and Communication Technology' });
+  assert.equal((await admin.patch(`/api/admin/departments/${IT}`, { code: 'ECA' })).body.name, 'Information and Communication Technology', 'only what is sent changes');
+  assert.equal((await admin.patch(`/api/admin/departments/${IT}`, { code: 'CSE' })).status, 409);
+  assert.equal((await admin.patch(`/api/admin/departments/${IT}`, {})).status, 400);
+  assert.equal((await admin.patch('/api/admin/departments/9999', { code: 'ZZZ' })).status, 404);
+  await createStaff(t.db, { username: 'hod.it', title: 'HOD IT', scopes: [{ deptId: IT }] });
+  const hod = app.client();
+  await hod.login('hod.it');
+  assert.equal((await hod.patch(`/api/admin/departments/${IT}`, { code: 'HAX' })).status, 403);
+});
+
 test('an email address can be the username, is stored lowercase, and signs in in any case', async () => {
   const res = await create({ username: 'HoD.IT@RMKEC.AC.IN', displayTitle: 'HoD - IT', role: 'viewer', scopes: [{ deptId: IT }] });
   assert.equal(res.status, 201);
