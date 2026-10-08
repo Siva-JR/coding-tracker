@@ -7,6 +7,7 @@ import { greeting, longDate, niceTitle, num, relDay, shortDate } from '../lib/fo
 import { Icon } from '../components/Icons.jsx';
 import { Scribble } from '../components/Decor.jsx';
 import { COLORS, LineChart, Sparkline } from '../components/Charts.jsx';
+import { canSeeAttention } from '../lib/access.js';
 import Leaderboard from '../components/Leaderboard.jsx';
 import SampleBadge from '../components/SampleBadge.jsx';
 
@@ -113,13 +114,13 @@ export default function Dashboard() {
                 <Health label="HackerRank" badge="H" color={COLORS.hackerrank} h={s.health.hackerrank} />
               </>
             ) : <div className="skeleton" style={{ height: 130 }} />}
-            <p className="margin-note"><Icon name="arrowCurl" /> Profiles that fail to load are listed under “Needs attention”.</p>
+            {canSeeAttention(user) && <p className="margin-note"><Icon name="arrowCurl" /> Profiles that fail to load are listed under “Needs attention”.</p>}
           </section>
 
           <section className="card" aria-labelledby="ra">
             <div className="card-head">
               <h2 id="ra">Recent activity <SampleBadge feature="activity" /></h2>
-              <button className="link-btn" onClick={() => nav('/attention')}>Needs attention <Icon name="chevron" /></button>
+              {canSeeAttention(user) && <button className="link-btn" onClick={() => nav('/attention')}>Needs attention <Icon name="chevron" /></button>}
             </div>
             {feed.loading && !feed.data && <div className="skeleton" style={{ height: 200 }} />}
             {feed.data && feed.data.length === 0 && <div className="empty">No notable changes in the last few days.</div>}

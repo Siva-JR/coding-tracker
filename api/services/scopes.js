@@ -40,3 +40,10 @@ export function coversStudent(access, { deptId, batchYear }) {
     (g) => (g.deptId === null || g.deptId === deptId) && (g.batchYear === null || g.batchYear === batchYear),
   );
 }
+
+// The "Needs attention" lists are for the people who fix the data: admins and HoDs (every scope names a
+// department). The principal and vice-principal (an all-departments scope) only read the leaderboard.
+export function canSeeAttention(user) {
+  if (user.role === 'admin') return true;
+  return user.scopes.length > 0 && user.scopes.every((s) => s.deptId != null);
+}

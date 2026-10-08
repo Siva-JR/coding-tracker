@@ -4,7 +4,7 @@
 import { DEPARTMENTS, USERS, TODAY_ISO, HISTORY_DAYS, dayIso, generateStudents, yearOf, scopeOf, DEMO_PASSWORD } from './mockData.js';
 import { parseProfileUrl, profileUrl } from '../lib/profileUrl.js';
 import { batchYearFor } from '../lib/yearOfStudy.js';
-import { scopeCovers } from '../lib/access.js';
+import { scopeCovers, canSeeAttention } from '../lib/access.js';
 import { checkGithubUrl } from '../lib/github.js';
 
 const students = generateStudents();
@@ -265,6 +265,9 @@ const daysBetween = (iso) => Math.round((new Date(TODAY_ISO) - new Date(iso)) / 
 
 export async function attention(user, { deptId } = {}) {
   await wait();
+  if (!canSeeAttention(user)) throw new ApiError(403, 'FORBIDDEN', 'The needs-attention lists are for admins and HoDs');
+  const missingList = [];
+  const fix = [];
   const broken = [];
   const stale = [];
   const inactive = [];
@@ -273,14 +276,22 @@ export async function attention(user, { deptId } = {}) {
       const st = s[p];
       const username = p === 'leetcode' ? s.leetcodeUsername : s.hackerrankUsername;
       const base = { studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, yearOfStudy: yearOf(s), platform: p, username, url: profileUrl(p, username) };
-      if (st.status !== 'ok') broken.push({ ...base, status: st.status, error: st.lastError, lastOk: st.lastOk });
+      if (st.status !== 'ok') broken.push({ ...base, status: st.status, error: st.lastError, lastOk: st.lastOk, batchYear: s.batchYear });
       else if (st.lastOk && st.lastOk !== TODAY_ISO && daysBetween(st.lastOk) >= 3) stale.push({ ...base, lastOk: st.lastOk });
+    }
+    const bad = ['leetcode', 'hackerrank'].filter((p) => s[p].status === 'not_found');
+    if (bad.length) {
+      fix.push({
+        studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: yearOf(s),
+        leetcodeUrl: profileUrl('leetcode', s.leetcodeUsername), hackerrankUrl: profileUrl('hackerrank', s.hackerrankUsername), githubUrl: s.githubUrl || '',
+        problems: bad.map((p) => `${p === 'leetcode' ? 'LeetCode' : 'HackerRank'}: profile @${p === 'leetcode' ? s.leetcodeUsername : s.hackerrankUsername} was not found`),
+      });
     }
     if ((s.leetcode.history || s.hackerrank.history) && gain(s, 'leetcode', 30) + gain(s, 'hackerrank', 30) === 0) {
       inactive.push({ studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, yearOfStudy: yearOf(s), leetcode: total(s, 'leetcode'), hackerrank: total(s, 'hackerrank') });
     }
   }
-  return { broken, stale, inactive };
+  return { missing: missingList, broken, stale, inactive, fix };
 }
 
 // ── admin: students (same shapes as the real endpoints) ─────────────────

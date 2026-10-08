@@ -5,7 +5,7 @@ import { Blobs } from './Decor.jsx';
 import { useAuth } from '../context/Auth.jsx';
 import { api, isSample } from '../api/index.js';
 import { handle, niceTitle } from '../lib/format.js';
-import { accessOf, describeScopes } from '../lib/access.js';
+import { accessOf, canSeeAttention, describeScopes } from '../lib/access.js';
 import { BrandBar, Footer } from './Brand.jsx';
 import { useScope } from '../context/Scope.jsx';
 import SyncPanel, { useRefreshNow } from './SyncPanel.jsx';
@@ -48,7 +48,8 @@ export default function Shell() {
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: 0, behavior: 'instant' }); setPop(null); }, [pathname]);
   useEffect(() => {
-    api.attention({}).then((a) => setAttn(a.broken.length)).catch(() => {});
+    if (!canSeeAttention(user)) { setAttn(0); return; }
+    api.attention({}).then((a) => setAttn(a.fix.length)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
 
@@ -66,7 +67,7 @@ export default function Shell() {
             <nav className="toolbar left" aria-label="Main">
               <Tool to="/" end icon="home" label="Leaderboard" />
               {multi && <Tool to="/departments" icon="grid" label="Departments" />}
-              <Tool to="/attention" icon="alert" label="Needs attention" badge={isSample('attention') ? 0 : attn} />
+              {canSeeAttention(user) && <Tool to="/attention" icon="alert" label="Needs attention" badge={isSample('attention') ? 0 : attn} />}
               {user.role === 'admin' && (
                 <>
                   <div className="tool-sep" />

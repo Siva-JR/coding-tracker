@@ -26,3 +26,11 @@ export function describeScopes(user) {
   const parts = (user.scopes || []).map((s) => `${s.deptCode || 'All departments'} · ${s.year ? yearLabel(s.year) : 'All Years'}`);
   return parts.length ? parts.join(', ') : 'No access granted';
 }
+
+/** The needs-attention lists are for admins and HoDs (every scope names a department), not the principal or vice-principal. */
+export function canSeeAttention(user) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  const scopes = user.scopes || [];
+  return scopes.length > 0 && scopes.every((s) => s.deptId != null);
+}
