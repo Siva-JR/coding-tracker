@@ -134,6 +134,8 @@ test('scopes apply to stats, activity, attention, overview and student detail', 
   assert.deepEqual((await it.get('/api/departments/overview')).body.map((d) => d.code), ['IT']);
 
   const p = await as('principal');
+  assert.equal((await p.get('/api/attention')).status, 403, 'the principal does not get the needs-attention lists');
+  assert.equal((await it.get('/api/attention')).status, 200, 'a HoD does');
   assert.equal((await p.get('/api/stats')).body.kpis.totalStudents.value, 2);
   assert.deepEqual((await p.get('/api/departments/overview')).body.map((d) => [d.code, d.students, d.avgSolved]), [['CSE', 1, 10], ['IT', 1, 30]]);
 
@@ -166,4 +168,21 @@ test('a viewer with no students gets zeros, not an error', async () => {
   assert.equal(s.kpis.totalStudents.value, 0);
   assert.deepEqual(s.timeline, []);
   assert.deepEqual((await c.get('/api/activity')).body, []);
+});
+
+test('missing links and profiles that do not exist come with everything needed to fix them', async () => {
+  const ann = await student({ roll: 'A', name: 'Ann', lc: 'ann', series: [[0, 10]] });                       // no HackerRank link
+  const bob = await student({ roll: 'B', name: 'Bob', lc: 'bob_typo', state: 'broken', lastError: 'Profile not found' });
+  await t.db.query("insert into platform_accounts (student_id, platform, username) values ($1, 'hackerrank', 'bob_h')", [bob]);
+  await t.db.query("update students set github_url = 'https://github.com/bob' where id = $1", [bob]);
+  await student({ roll: 'C', name: 'Cat', lc: 'cat', series: [[1, 5]], lastOkDaysAgo: 1, lastError: 'HTTP 429', attempts: 2 }); // temporary error, no link missing from HR
+  const a = (await (await as('admin')).get('/api/attention')).body;
+  assert.deepEqual(a.missing.map((x) => [x.name, x.platforms]).sort(), [['Ann', ['hackerrank']], ['Cat', ['hackerrank']]]);
+  const bobFix = a.fix.find((x) => x.studentId === bob);
+  assert.deepEqual(
+    [bobFix.rollNo, bobFix.deptCode, bobFix.batchYear, bobFix.leetcodeUrl, bobFix.hackerrankUrl, bobFix.githubUrl, bobFix.problems],
+    ['B', 'CSE', 2028, 'https://leetcode.com/u/bob_typo/', 'https://www.hackerrank.com/profile/bob_h', 'https://github.com/bob', ['LeetCode: profile @bob_typo was not found']],
+  );
+  assert.deepEqual(a.fix.find((x) => x.studentId === ann).problems, ['HackerRank: no link']);
+  assert.equal(a.fix.length, 3, 'Bob (not found), Ann and Cat (no HackerRank link)');
 });

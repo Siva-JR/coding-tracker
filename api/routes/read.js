@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { HttpError, asyncRoute, bad, parseInteger } from '../http.js';
 import { authenticate } from '../middleware/auth.js';
 import { getLeaderboard } from '../services/leaderboard.js';
-import { resolveAccess, canRequest, grantsParam, canSeeDepartment, coversStudent } from '../services/scopes.js';
+import { resolveAccess, canRequest, grantsParam, canSeeDepartment, coversStudent, canSeeAttention } from '../services/scopes.js';
 import { refreshTargets } from '../services/refresh.js';
 import { refreshStudent } from '../services/students.js';
 import { getStats, getActivity, getAttention, getDepartmentOverview, getStudentDetail, listGithubLinks } from '../services/insights.js';
@@ -74,7 +74,10 @@ export function readRoutes({ db, sessionSecret, now, fetchProfile }) {
     res.json(await getActivity(db, { ...scoped(req), limit }));
   }));
 
-  router.get('/attention', auth, asyncRoute(async (req, res) => res.json(await getAttention(db, scoped(req)))));
+  router.get('/attention', auth, asyncRoute(async (req, res) => {
+    if (!canSeeAttention(req.user)) throw new HttpError(403, 'FORBIDDEN', 'The needs-attention lists are for admins and HoDs');
+    res.json(await getAttention(db, scoped(req)));
+  }));
 
   router.get('/departments/overview', auth, asyncRoute(async (req, res) => {
     const access = resolveAccess(req.user, now());

@@ -11,6 +11,7 @@ import Admin from './pages/Admin.jsx';
 import Present from './pages/Present.jsx';
 import ChangePassword from './pages/ChangePassword.jsx';
 import { ScopeProvider, useScope } from './context/Scope.jsx';
+import { canSeeAttention } from './lib/access.js';
 
 function Protected() {
   const { user, booting } = useAuth();
@@ -27,6 +28,12 @@ function MultiDeptOnly({ children }) {
   return multi ? children : <Navigate to="/" replace />;
 }
 
+// Admins and HoDs only; the principal and vice-principal have no needs-attention lists.
+function AttentionOnly({ children }) {
+  const { user } = useAuth();
+  return canSeeAttention(user) ? children : <Navigate to="/" replace />;
+}
+
 export default function App() {
   return (
     <HashRouter>
@@ -40,7 +47,7 @@ export default function App() {
               <Route path="dept/:deptId" element={<MultiDeptOnly><Dashboard /></MultiDeptOnly>} />
               <Route path="departments" element={<MultiDeptOnly><Departments /></MultiDeptOnly>} />
               <Route path="student/:id" element={<StudentDetail />} />
-              <Route path="attention" element={<Attention />} />
+              <Route path="attention" element={<AttentionOnly><Attention /></AttentionOnly>} />
               <Route path="admin" element={<Admin />} />
               <Route path="present" element={<Present />} />
             </Route>

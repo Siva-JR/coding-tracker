@@ -242,18 +242,39 @@ export async function getActivity(db, { deptId = null, grants = null, limit = 8,
 export async function getAttention(db, { deptId = null, grants = null, now = new Date() }) {
   const today = istDate(now);
   const students = await scopedStudents(db, { deptId, grants, now });
-  const out = { broken: [], stale: [], inactive: [], inactiveAvailable: false };
+  // missing: students with no link for a platform. fix: everyone whose links need correcting (missing, or a
+  // profile that does not exist), with all their links, ready to export, correct and import again.
+  const out = { missing: [], broken: [], stale: [], inactive: [], fix: [], inactiveAvailable: false };
   if (!students.length) return out;
   const ids = students.map((s) => s.id);
-  const [accounts, facts] = await Promise.all([loadAccounts(db, ids), loadFacts(db, ids, today, [INACTIVE_DAYS])]);
+  const [accounts, facts, github] = await Promise.all([
+    loadAccounts(db, ids), loadFacts(db, ids, today, [INACTIVE_DAYS]),
+    db.query('select id, github_url from students where id = any($1::int[])', [ids]),
+  ]);
+  const githubOf = new Map(github.rows.map((r) => [r.id, r.github_url]));
+  const label = { leetcode: 'LeetCode', hackerrank: 'HackerRank' };
 
   for (const s of students) {
+    const who = { studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: s.yearOfStudy };
+    const problems = [];
+    const links = {};
+    const absent = [];
+    for (const platform of PLATFORMS) {
+      const a = accounts.get(key(s.id, platform));
+      links[platform] = a ? PROFILE_URL[platform](a.username) : '';
+      if (!a) { absent.push(platform); problems.push(`${label[platform]}: no link`); }
+      else if (accountStatus(a) === 'not_found') problems.push(`${label[platform]}: profile @${a.username} was not found`);
+    }
+    if (absent.length) out.missing.push({ ...who, platforms: absent });
+    if (problems.length) {
+      out.fix.push({ ...who, leetcodeUrl: links.leetcode, hackerrankUrl: links.hackerrank, githubUrl: githubOf.get(s.id) || '', problems });
+    }
+
     for (const platform of PLATFORMS) {
       const a = accounts.get(key(s.id, platform));
       if (!a) continue;
       const base = {
-        studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, yearOfStudy: s.yearOfStudy,
-        platform, username: a.username, url: PROFILE_URL[platform](a.username),
+        ...who, platform, username: a.username, url: PROFILE_URL[platform](a.username),
         lastOk: a.last_ok_at ? istDate(new Date(a.last_ok_at)) : null,
       };
       if (needsAttention(a)) out.broken.push({ ...base, status: accountStatus(a), error: a.last_error });
