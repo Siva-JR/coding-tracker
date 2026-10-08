@@ -165,5 +165,21 @@ function readSheet(files, path, shared) {
       for (let c = from.col; c <= Math.min(to.col, from.col + 50); c++) cellAt(r, c).links.push(target);
     }
   }
+
+  // Merged cells: only the top-left cell holds the value, but it applies to the whole range. A sheet that
+  // merges the Department or Batch cells down the column means "this value for every student".
+  for (const m of kids(kid(doc, 'mergeCells') ?? { children: [] }, 'mergeCell')) {
+    const [a, b] = (m.attrs.ref || '').split(':');
+    const from = splitRef(a);
+    const to = b ? splitRef(b) : null;
+    const top = from && rows[from.row]?.[from.col];
+    if (!to || !top?.text) continue;
+    for (let r = from.row; r <= Math.min(to.row, from.row + 5000); r++) {
+      for (let c = from.col; c <= Math.min(to.col, from.col + 50); c++) {
+        const cell = cellAt(r, c);
+        if (!cell.text) cell.text = top.text;
+      }
+    }
+  }
   return rows;
 }
