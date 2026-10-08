@@ -120,6 +120,7 @@ h1, h2, h3, p { margin: 0; }
   position: absolute; right: 58px; top: 50%; transform: translateY(-50%); z-index: 6; width: 250px; padding: 14px;
   border-radius: 14px; background: #fff; box-shadow: 0 18px 40px -16px rgba(20, 38, 31, 0.4), 0 0 0 1px var(--line);
 }
+.popover.wide { width: 300px; }
 .popover h4 { margin: 0 0 2px; font-size: 15px; }
 .popover .sub { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
 

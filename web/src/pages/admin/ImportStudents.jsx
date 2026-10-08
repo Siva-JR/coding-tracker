@@ -9,7 +9,7 @@ import { FIELD_LABELS, applyDefaults, studentsFromSheet } from '../../lib/sheet.
 import { downloadXlsx, problemsWorkbook, templateWorkbook } from '../../lib/xlsxWrite.js';
 import { newTally } from '../../lib/scrape.js';
 import { allStudents } from '../../lib/students.js';
-import { describePatch, planForExisting } from '../../lib/existing.js';
+import { describePatch, identityMismatch, planForExisting } from '../../lib/existing.js';
 import { parseProfileUrl } from '../../lib/profileUrl.js';
 import { checkGithubUrl, githubHandle } from '../../lib/github.js';
 import { batchYearFor, yearBatchLabel, yearLabel } from '../../lib/yearOfStudy.js';
@@ -234,7 +234,7 @@ export default function ImportStudents() {
   const downloadProblems = () => {
     const lines = flagged.map((v) => {
       const r = v.row;
-      const problems = [...(r.notes || []).map((n) => n.text), ...(v.phase === 'incomplete' ? [`Already added. ${v.plan.missingText}`] : []), ...v.errors, ...(v.st?.warnings || [])];
+      const problems = [...(r.notes || []).filter((n) => n.kind !== 'improper').map((n) => n.text), ...(v.phase === 'incomplete' ? [`Already added. ${v.plan.missingText}`] : []), ...v.errors, ...(v.st?.warnings || [])];
       return [r.name, r.rollNo, r.deptCode, r.batchYear, r.leetcodeUrl, r.hackerrankUrl, r.githubUrl || '', problems.join(' | ')];
     });
     downloadXlsx('students-needing-attention.xlsx', problemsWorkbook(lines));
@@ -373,9 +373,10 @@ export default function ImportStudents() {
                       <td style={{ minWidth: 170 }}>
                         {badge(v)}
                         {v.errors.map((e, i) => <span className="row-err" key={i}>{e}</span>)}
-                        {!v.known && (r.notes || []).map((n) => <span className="row-note" key={n.platform}>{n.text}</span>)}
+                        {!v.known && (r.notes || []).filter((n) => n.kind !== 'improper').map((n) => <span className="row-note" key={n.platform}>{n.text}</span>)}
                         {v.phase === 'incomplete' && <span className="hint" style={{ display: 'block' }}>Already added. {v.plan.missingText}; add it in the sheet or type it here.</span>}
                         {v.known && ['exists', 'update', 'incomplete'].includes(v.phase) && (v.plan?.notes || []).map((n, i) => <span className="hint" style={{ display: 'block' }} key={i}>{n}</span>)}
+                        {v.known && identityMismatch(r, v.known) && <span className="row-note">{identityMismatch(r, v.known)}</span>}
                         {v.phase === 'exists' && !(v.plan?.notes || []).length && <span className="hint" style={{ display: 'block' }}>Nothing to change.</span>}
                         {(v.st?.warnings || []).map((w, i) => <span className="hint" style={{ display: 'block' }} key={i}>{w}</span>)}
                       </td>

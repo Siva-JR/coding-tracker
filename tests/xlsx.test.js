@@ -102,7 +102,7 @@ test('=HYPERLINK() formulas and rich text cells are read', { skip }, () => {
   assert.equal(res.rows[0].hackerrankUrl, 'https://www.hackerrank.com/profile/chandra_h');
 });
 
-test('a link with no username is flagged, the student keeps the other platform, and one with neither is blocked', { skip }, () => {
+test('a link with no username is kept as typed so it is flagged, and the other link is still read', { skip }, () => {
   const bytes = workbook({
     cells: {
       ...HEADER,
@@ -114,11 +114,11 @@ test('a link with no username is flagged, the student keeps the other platform, 
   });
   const res = studentsFromSheet(readWorkbook(bytes)[0].rows);
   const [dev, esha, farid] = res.rows;
-  assert.equal(dev.leetcodeUrl, '');
+  assert.equal(dev.leetcodeUrl, 'https://leetcode.com/', 'the improper link stays in the row so it is shown and can be fixed');
   assert.equal(dev.hackerrankUrl, 'https://www.hackerrank.com/profile/dev_h');
   assert.match(dev.notes[0].text, /LeetCode: the link has no username/);
   assert.equal(esha.leetcodeUrl, '');
-  assert.equal(esha.hackerrankUrl, '');
+  assert.equal(esha.hackerrankUrl, 'https://www.hackerrank.com/dashboard');
   assert.equal(esha.notes.length, 2);
   assert.match(esha.notes.find((n) => n.platform === 'leetcode').text, /no link in the sheet/);
   assert.match(esha.notes.find((n) => n.platform === 'hackerrank').text, /no username/);

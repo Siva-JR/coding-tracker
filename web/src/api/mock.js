@@ -561,3 +561,20 @@ export async function createDepartment(user, name, code) {
 }
 
 export { DEMO_PASSWORD };
+
+// ── refresh now (any signed-in user, within their scopes) ───────────────
+export async function refreshTargets(user, { deptId } = {}) {
+  const list = visible(user, { deptId });
+  const times = list.flatMap((s) => [s.leetcode.lastOk, s.hackerrank.lastOk]).filter(Boolean).sort();
+  return {
+    students: list.map((s) => ({ id: s.id, name: s.name })),
+    lastUpdatedAt: times.length ? `${times[times.length - 1]}T02:10:00.000Z` : null,
+    oldestAt: null,
+  };
+}
+
+export async function refreshMine(user, id) {
+  const s = students.find((x) => x.id === Number(id));
+  if (!s || !covers(user, s)) throw new ApiError(404, 'NOT_FOUND', 'Student not found');
+  return refreshStudent({ role: 'admin' }, id);
+}

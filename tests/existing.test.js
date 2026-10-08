@@ -98,3 +98,12 @@ test('describePatch names what will be added', () => {
   assert.equal(describePatch({ hackerrankUrl: HR }), 'HackerRank link');
   assert.equal(describePatch({}), '');
 });
+
+test('students are matched on reg no; a different name or department is called out, spelling is not', async () => {
+  const { identityMismatch } = await import('../web/src/lib/existing.js');
+  const rec = { name: 'RISHI KANTH V V', deptCode: 'CSE' };
+  assert.equal(identityMismatch({ name: 'Rishi Kanth V.V.', deptCode: 'cse' }, rec), '');
+  assert.equal(identityMismatch({ name: 'V V Rishi Kanth', deptCode: 'CSE' }, rec), '');
+  assert.match(identityMismatch({ name: 'Someone Else', deptCode: 'CSE' }, rec), /name on file is “RISHI KANTH V V”/);
+  assert.match(identityMismatch({ name: 'Rishi Kanth V V', deptCode: 'IT' }, rec), /department on file is CSE/);
+});

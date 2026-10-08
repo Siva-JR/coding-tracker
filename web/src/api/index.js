@@ -76,6 +76,8 @@ export const api = {
   stats: (q) => (LIVE.stats ? live.stats(q) : mock.stats(u(), q)),
   activity: (q) => (LIVE.activity ? live.activity(q) : mock.activity(u(), q)),
   student: (id) => (LIVE.student ? live.student(id) : mock.student(u(), id)),
+  refreshTargets: (q) => (isLiveMode ? live.refreshTargets(q) : mock.refreshTargets(u(), q)),
+  refreshMine: (id) => (isLiveMode ? live.refreshMine(id) : mock.refreshMine(u(), id)),
   attention: (q) => (LIVE.attention ? live.attention(q) : mock.attention(u(), q)),
 
   admin: LIVE.admin ? live.admin : {

@@ -14,6 +14,19 @@ import { checkGithubUrl } from './github.js';
 
 const PLATFORMS = [['leetcode', 'leetcodeUrl', 'LeetCode'], ['hackerrank', 'hackerrankUrl', 'HackerRank']];
 
+const nameKey = (n) => (n || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+
+/**
+ * Students are matched on reg no alone (spelling of the name never matters). If the name or department in
+ * the sheet does not look like the student on file, say so: the reg no may have been mistyped or reused.
+ */
+export function identityMismatch(row, existing) {
+  const parts = [];
+  if (row.name && existing.name && nameKey(row.name) !== nameKey(existing.name)) parts.push(`name on file is “${existing.name}”`);
+  if (row.deptCode && existing.deptCode && row.deptCode.trim().toUpperCase() !== existing.deptCode.toUpperCase()) parts.push(`department on file is ${existing.deptCode}`);
+  return parts.length ? `Check the reg no: ${parts.join(', ')}` : '';
+}
+
 /**
  * row: a parsed sheet row ({ leetcodeUrl, hackerrankUrl, githubUrl, notes }).
  * existing: the student on file ({ id, accounts: [{ platform, username, state }], githubUrl }).
