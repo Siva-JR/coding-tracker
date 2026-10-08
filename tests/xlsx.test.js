@@ -22,7 +22,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 
 // Builds a small workbook. cells: { A1: 'text' | 123 | { f: 'HYPERLINK("u","l")', v: 'label' } | { rich: [...] } }
 // links: { E5: 'https://…' } become external hyperlinks, like Excel links and Google Sheets chips.
-function workbook({ cells, links = {}, sheetName = 'Sheet1', prefix = '', extraSheets = [] }) {
+function workbook({ cells, links = {}, merges = [], sheetName = 'Sheet1', prefix = '', extraSheets = [] }) {
   const p = prefix;
   const strings = [];
   const sIndex = (t) => { let i = strings.indexOf(t); if (i < 0) { strings.push(t); i = strings.length - 1; } return i; };
@@ -40,7 +40,7 @@ function workbook({ cells, links = {}, sheetName = 'Sheet1', prefix = '', extraS
 
   const linkEntries = Object.entries(links);
   const hyperlinks = linkEntries.length ? `<${p}hyperlinks>${linkEntries.map(([ref], i) => `<${p}hyperlink ref="${ref}" r:id="rId${i + 1}"/>`).join('')}</${p}hyperlinks>` : '';
-  const sheetXml = `<?xml version="1.0"?><${p}worksheet xmlns${p ? ':' + p.slice(0, -1) : ''}="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><${p}sheetData>${rowsXml}</${p}sheetData>${hyperlinks}</${p}worksheet>`;
+  const sheetXml = `<?xml version="1.0"?><${p}worksheet xmlns${p ? ':' + p.slice(0, -1) : ''}="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><${p}sheetData>${rowsXml}</${p}sheetData>${merges.length ? `<${p}mergeCells count="${merges.length}">${merges.map((m) => `<${p}mergeCell ref="${m}"/>`).join('')}</${p}mergeCells>` : ''}${hyperlinks}</${p}worksheet>`;
   const sheetRels = `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${linkEntries.map(([, url], i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${esc(url)}" TargetMode="External"/>`).join('')}</Relationships>`;
 
   const all = [{ name: sheetName, xml: sheetXml, rels: sheetRels }, ...extraSheets.map((x) => ({ name: x.name, xml: workbookSheetXml(x) }))];
@@ -191,4 +191,19 @@ test('the workbooks the app writes (template and the needing-attention list) rea
   // They are real hyperlinks in the file, not just text
   const cells = readWorkbook(bytes)[0].rows;
   assert.deepEqual(cells[1][4].links, ['https://leetcode.com/u/asha1']);
+});
+
+test('Department and Batch merged down the column apply to every student in the range', { skip }, () => {
+  const bytes = workbook({
+    cells: {
+      A1: 'NAME', B1: 'REG NO', C1: 'DEPARTMENT', D1: 'BATCH', E1: 'LEETCODE LINK',
+      A2: 'Asha', B2: 'R1', C2: 'EEV', D2: 2029, E2: 'https://leetcode.com/u/asha1',
+      A3: 'Bala', B3: 'R2', E3: 'https://leetcode.com/u/bala1',
+      A4: 'Cara', B4: 'R3', E4: 'https://leetcode.com/u/cara1',
+      A5: 'Dev', B5: 'R4', C5: 'IT', D5: 2028, E5: 'https://leetcode.com/u/dev1',
+    },
+    merges: ['C2:C4', 'D2:D4'],
+  });
+  const { rows } = studentsFromSheet(readWorkbook(bytes)[0].rows);
+  assert.deepEqual(rows.map((r) => [r.name, r.deptCode, r.batchYear]), [['Asha', 'EEV', '2029'], ['Bala', 'EEV', '2029'], ['Cara', 'EEV', '2029'], ['Dev', 'IT', '2028']]);
 });
