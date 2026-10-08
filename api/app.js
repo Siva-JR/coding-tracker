@@ -41,7 +41,7 @@ export function createApp({
   app.use('/api', requireJson);
   app.use('/api/auth', authRoutes({ db, sessionSecret, cookieOptions, now }));
   app.use('/api/admin', adminRoutes({ db, sessionSecret, fetchProfile, now }));
-  app.use('/api', readRoutes({ db, sessionSecret, now }));
+  app.use('/api', readRoutes({ db, sessionSecret, now, fetchProfile }));
 
   app.post('/internal/scrape/tick', async (req, res, next) => {
     try {

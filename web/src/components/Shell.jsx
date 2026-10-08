@@ -4,10 +4,11 @@ import { Icon } from './Icons.jsx';
 import { Blobs } from './Decor.jsx';
 import { useAuth } from '../context/Auth.jsx';
 import { api, isSample } from '../api/index.js';
-import { handle, longDate, niceTitle } from '../lib/format.js';
-import { describeScopes } from '../lib/access.js';
+import { handle, niceTitle } from '../lib/format.js';
+import { accessOf, describeScopes } from '../lib/access.js';
 import { BrandBar, Footer } from './Brand.jsx';
 import { useScope } from '../context/Scope.jsx';
+import SyncPanel, { useRefreshNow } from './SyncPanel.jsx';
 
 function Tool({ to, icon, label, end, badge }) {
   return (
@@ -19,7 +20,7 @@ function Tool({ to, icon, label, end, badge }) {
   );
 }
 
-function Popover({ id, open, onClose, children }) {
+function Popover({ id, open, onClose, children, wide }) {
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
@@ -30,7 +31,7 @@ function Popover({ id, open, onClose, children }) {
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
   }, [open, onClose, id]);
   if (!open) return null;
-  return <div className="popover" ref={ref} role="dialog">{children}</div>;
+  return <div className={`popover${wide ? ' wide' : ''}`} ref={ref} role="dialog">{children}</div>;
 }
 
 export default function Shell() {
@@ -42,6 +43,8 @@ export default function Shell() {
   const [attn, setAttn] = useState(0);
   const presenting = pathname === '/present';
   const { multi } = useScope();
+  const everyone = !accessOf(user).deptIds;
+  const run = useRefreshNow(user.id);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: 0, behavior: 'instant' }); setPop(null); }, [pathname]);
   useEffect(() => {
@@ -84,10 +87,8 @@ export default function Shell() {
               <button className="tool" data-pop="account" onClick={() => setPop(pop === 'account' ? null : 'account')} aria-label="Account" aria-expanded={pop === 'account'}>
                 <Icon name="users" /><span className="tip" aria-hidden="true">Account</span>
               </button>
-              <Popover id="sync" open={pop === 'sync'} onClose={() => setPop(null)}>
-                <h4>Data is fresh</h4>
-                <p className="sub">Profiles refresh automatically every night between 01:00 and 05:00 IST.</p>
-                <span className="chip ok"><Icon name="check" size={14} /> Last full update: {longDate()}</span>
+              <Popover id="sync" open={pop === 'sync'} onClose={() => setPop(null)} wide>
+                <SyncPanel run={run} scopeText={everyone ? 'every student in the college' : 'your department'} />
               </Popover>
               <Popover id="account" open={pop === 'account'} onClose={() => setPop(null)}>
                 <h4>{niceTitle(user.displayTitle)}</h4>

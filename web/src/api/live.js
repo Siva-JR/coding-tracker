@@ -23,6 +23,8 @@ export const stats = (q) => get('/api/stats', { deptId: q?.deptId });
 export const activity = (q) => get('/api/activity', { deptId: q?.deptId, limit: q?.limit });
 export const attention = (q) => get('/api/attention', { deptId: q?.deptId });
 export const departmentOverview = () => get('/api/departments/overview');
+export const refreshTargets = (q) => get('/api/refresh', { deptId: q?.deptId });
+export const refreshMine = (id) => post(`/api/refresh/students/${id}`, {}, { timeout: 45000 });
 export const student = (id) => get(`/api/students/${id}`);
 
 export const admin = {

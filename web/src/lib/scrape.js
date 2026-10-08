@@ -17,9 +17,9 @@ export const newTally = (total = 0) => ({
 });
 
 /** 'fetched' | 'notFound' | 'failed' for one student. */
-export async function scrapeOne(id) {
+export async function scrapeOne(id, refresh = (x) => api.admin.refreshStudent(x)) {
   try {
-    const r = await api.admin.refreshStudent(id);
+    const r = await refresh(id);
     if (r.results.some((x) => x.status === 'error')) return 'failed';
     return r.results.some((x) => x.status === 'not_found') ? 'notFound' : 'fetched';
   } catch {
@@ -32,13 +32,13 @@ export async function scrapeOne(id) {
  * after each one. `tally` can be shared across several calls (Import feeds it a chunk at a time).
  * Returns the students that failed temporarily so the caller can try them once more.
  */
-export async function scrapeSequentially(list, tally, { onStep, shouldStop }) {
+export async function scrapeSequentially(list, tally, { onStep, shouldStop, refresh }) {
   const failed = [];
   for (const s of list) {
     if (shouldStop?.() || tally.aborted) { tally.stopped = !!shouldStop?.(); break; }
     tally.current = s.name;
     onStep?.({ ...tally });
-    const outcome = await scrapeOne(s.id);
+    const outcome = await scrapeOne(s.id, refresh);
     tally.done++;
     if (outcome === 'failed') {
       tally.failed++; tally.streak++; failed.push(s);
@@ -53,14 +53,14 @@ export async function scrapeSequentially(list, tally, { onStep, shouldStop }) {
 }
 
 /** One more go at students that failed temporarily. Fixes the tally as they succeed. */
-export async function retryFailed(list, tally, { onStep, shouldStop }) {
+export async function retryFailed(list, tally, { onStep, shouldStop, refresh }) {
   if (!list.length || tally.aborted) return;
   await sleep(FAILURE_BACKOFF_MS);
   for (const s of list) {
     if (shouldStop?.()) { tally.stopped = true; break; }
     tally.current = s.name;
     onStep?.({ ...tally });
-    const outcome = await scrapeOne(s.id);
+    const outcome = await scrapeOne(s.id, refresh);
     if (outcome !== 'failed') { tally.failed--; tally[outcome]++; }
     onStep?.({ ...tally });
   }

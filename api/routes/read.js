@@ -3,6 +3,8 @@ import { HttpError, asyncRoute, bad, parseInteger } from '../http.js';
 import { authenticate } from '../middleware/auth.js';
 import { getLeaderboard } from '../services/leaderboard.js';
 import { resolveAccess, canRequest, grantsParam, canSeeDepartment, coversStudent } from '../services/scopes.js';
+import { refreshTargets } from '../services/refresh.js';
+import { refreshStudent } from '../services/students.js';
 import { getStats, getActivity, getAttention, getDepartmentOverview, getStudentDetail, listGithubLinks } from '../services/insights.js';
 
 const PLATFORMS = ['leetcode', 'hackerrank'];
@@ -30,7 +32,7 @@ function parseLeaderboardQuery(query) {
   };
 }
 
-export function readRoutes({ db, sessionSecret, now }) {
+export function readRoutes({ db, sessionSecret, now, fetchProfile }) {
   const router = Router();
   const auth = authenticate({ db, sessionSecret });
 
@@ -88,6 +90,21 @@ export function readRoutes({ db, sessionSecret, now }) {
     // Outside the caller's scopes looks the same as not existing.
     if (!detail || !coversStudent(access, detail)) throw new HttpError(404, 'NOT_FOUND', 'Student not found');
     res.json(detail);
+  }));
+
+  // "Refresh now": anyone signed in can refresh the students their scopes cover (a HoD their department,
+  // the principal and vice-principal everyone). The list also carries when the data was last updated.
+  router.get('/refresh', auth, asyncRoute(async (req, res) => {
+    res.json(await refreshTargets(db, scoped(req)));
+  }));
+
+  router.post('/refresh/students/:id', auth, asyncRoute(async (req, res) => {
+    const id = parseInteger(req.params.id, 'id', { min: 1, max: 2147483647 });
+    const access = resolveAccess(req.user, now());
+    const { rows: [st] } = await db.query('select dept_id as "deptId", batch_year as "batchYear" from students where id = $1', [id]);
+    // Outside the caller's scopes looks the same as not existing.
+    if (!st || !coversStudent(access, st)) throw new HttpError(404, 'NOT_FOUND', 'Student not found');
+    res.json(await refreshStudent(db, id, { fetchProfile, now: now() }));
   }));
 
   router.get('/departments', auth, asyncRoute(async (req, res) => {
