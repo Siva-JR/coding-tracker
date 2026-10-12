@@ -29,6 +29,8 @@ function parseLeaderboardQuery(query) {
     // Up to 1000 so "show everyone" can be a single request.
     limit: query.limit === undefined ? 20 : parseInteger(query.limit, 'limit', { min: 1, max: 1000 }),
     q: typeof query.q === 'string' && query.q.trim() ? query.q.trim().slice(0, 100) : null,
+    reverse: query.reverse === 'true',
+    top: query.top === 'true',
   };
 }
 

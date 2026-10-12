@@ -12,9 +12,9 @@ import SyncPanel, { useRefreshNow } from './SyncPanel.jsx';
 
 function Tool({ to, icon, label, end, badge }) {
   return (
-    <NavLink to={to} end={end} className={({ isActive }) => `tool${isActive ? ' active' : ''}`} aria-label={label}>
+    <NavLink to={to} end={end} className={({ isActive }) => `tool${isActive ? ' active' : ''}`} aria-label={badge > 0 ? `${label}, something to look at` : label}>
       <Icon name={icon} />
-      {badge > 0 && <span className="dot" aria-hidden="true">{badge > 99 ? '99+' : badge}</span>}
+      {badge > 0 && <span className="dot" aria-hidden="true" />}
       <span className="tip" aria-hidden="true">{label}</span>
     </NavLink>
   );
@@ -49,7 +49,7 @@ export default function Shell() {
   useEffect(() => { scrollRef.current?.scrollTo({ top: 0, behavior: 'instant' }); setPop(null); }, [pathname]);
   useEffect(() => {
     if (!canSeeAttention(user)) { setAttn(0); return; }
-    api.attention({}).then((a) => setAttn(a.fix.length)).catch(() => {});
+    api.attention({}).then((a) => setAttn(a.fix.length + a.stale.length)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
 
@@ -67,7 +67,7 @@ export default function Shell() {
             <nav className="toolbar left" aria-label="Main">
               <Tool to="/" end icon="home" label="Leaderboard" />
               {multi && <Tool to="/departments" icon="grid" label="Departments" />}
-              {canSeeAttention(user) && <Tool to="/attention" icon="alert" label="Needs attention" badge={isSample('attention') ? 0 : attn} />}
+              {canSeeAttention(user) && <Tool to="/profile-check" icon="link" label="Profile check" badge={isSample('attention') ? 0 : attn} />}
               {user.role === 'admin' && (
                 <>
                   <div className="tool-sep" />

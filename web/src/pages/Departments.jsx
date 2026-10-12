@@ -2,6 +2,8 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/index.js';
 import { useAsync } from '../lib/hooks.js';
 import { num } from '../lib/format.js';
+import { useAuth } from '../context/Auth.jsx';
+import { canSeeAttention } from '../lib/access.js';
 import SampleBadge from '../components/SampleBadge.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { Scribble } from '../components/Decor.jsx';
@@ -9,6 +11,7 @@ import { Sparkline } from '../components/Charts.jsx';
 
 export default function Departments() {
   const nav = useNavigate();
+  const { user } = useAuth();
   const { data, loading, error } = useAsync(() => api.departmentOverview(), []);
   return (
     <>
@@ -40,7 +43,7 @@ export default function Departments() {
             <Sparkline data={d.spark} />
             <div className="dept-top">
               {d.top ? <>Top: <b>{d.top.name}</b> · {num(d.top.solved)} solved</> : 'No data yet'}
-              {d.attention > 0 && <span className="chip warn" style={{ float: 'right' }}>{d.attention} need attention</span>}
+              {d.attention > 0 && canSeeAttention(user) && <span className="chip" style={{ float: 'right' }}>{d.attention} to check</span>}
             </div>
           </button>
         ))}

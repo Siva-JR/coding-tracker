@@ -95,3 +95,25 @@ test('wildcard characters in the search are matched literally', async () => {
   assert.deepEqual(names(await board(c, '&q=_')), []);     // "_"
   assert.deepEqual(names(await board(c, '&q=%27%20or%201%3D1%20--')), []);
 });
+
+test('reverse flips the reading order but never the positions; a flipped Top N is still the best N', async () => {
+  const c = await as('admin');
+  const names = (r) => r.body.entries.map((e) => e.name);
+  const positions = (r) => r.body.entries.map((e) => e.position);
+
+  const topFlipped = await c.get('/api/leaderboard?platform=leetcode&limit=3&reverse=true&top=true');
+  assert.deepEqual(names(topFlipped), ['Chitra', 'Bhavana', 'Aarav'], 'Top 3, best last');
+  assert.deepEqual(positions(topFlipped), [3, 2, 1]);
+
+  const fromTheEnd = await c.get('/api/leaderboard?platform=leetcode&limit=3&reverse=true');
+  assert.deepEqual(names(fromTheEnd), ['Lakshmi', 'Kala', 'Jai'], 'All, read from the bottom');
+  assert.deepEqual(positions(fromTheEnd), [12, 11, 10]);
+
+  const normal = await c.get('/api/leaderboard?platform=leetcode&limit=3');
+  assert.deepEqual(positions(normal), [1, 2, 3]);
+
+  const byRank = await c.get('/api/leaderboard?platform=leetcode&sort=rank&limit=2&reverse=true&top=true');
+  assert.deepEqual(names(byRank), ['Bhavana', 'Aarav']);
+  const search = await c.get('/api/leaderboard?platform=leetcode&limit=2&q=a&reverse=true');
+  assert.deepEqual(positions(search), [...positions(search)].sort((a, b) => b - a), 'search results also read from the bottom');
+});

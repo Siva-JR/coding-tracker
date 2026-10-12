@@ -237,7 +237,7 @@ export default function ImportStudents() {
       const problems = [...(r.notes || []).filter((n) => n.kind !== 'improper').map((n) => n.text), ...(v.phase === 'incomplete' ? [`Already added. ${v.plan.missingText}`] : []), ...v.errors, ...(v.st?.warnings || [])];
       return [r.name, r.rollNo, r.deptCode, r.batchYear, r.leetcodeUrl, r.hackerrankUrl, r.githubUrl || '', problems.join(' | ')];
     });
-    downloadXlsx('students-needing-attention.xlsx', problemsWorkbook(lines));
+    downloadXlsx('profile-links-to-fix.xlsx', problemsWorkbook(lines));
   };
 
   // ── rendering ───────────────────────────────────────────────────────
@@ -356,7 +356,7 @@ export default function ImportStudents() {
             {checkingExisting && <span className="hint" role="status">Checking who is already added…</span>}
             <div className="spacer" />
             {flagged.length > 0 && !running && (
-              <button className="btn ghost sm" onClick={downloadProblems} title="An Excel file of the students that need attention, to fix and upload again"><Icon name="download" /> List of {flagged.length} needing attention</button>
+              <button className="btn ghost sm" onClick={downloadProblems} title="An Excel file of the students whose links need checking, to correct and upload again"><Icon name="download" /> List of {flagged.length} to check</button>
             )}
             <button className="btn" onClick={() => importRows(toSend)} disabled={running || checkingExisting || !toSend.length}>
               {running ? 'Importing…' : counts.done ? `Import the other ${toSend.length}` : `Import ${toSend.length} student${toSend.length === 1 ? '' : 's'}`}
