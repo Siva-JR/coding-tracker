@@ -90,7 +90,7 @@ export default function Dashboard() {
 
       <div style={{ marginBottom: 8 }}><SampleBadge feature="stats" /></div>
       <div className="grid kpis">
-        <Kpi tone="blue" icon="users" label="Total students" value={s?.kpis.totalStudents.value} loading={stats.loading && !s} note={`${s?.needsAttention ?? 0} need${s?.needsAttention === 1 ? 's' : ''} attention`} />
+        <Kpi tone="blue" icon="users" label="Total students" value={s?.kpis.totalStudents.value} loading={stats.loading && !s} note={canSeeAttention(user) && s ? (s.toCheck.links + s.toCheck.stale ? `${s.toCheck.links} to fix · ${s.toCheck.stale} to refresh` : 'all profiles look fine') : undefined} />
         <Kpi tone="teal" icon="user" label="Active this week" value={s?.kpis.activeStudents.value} spark={s?.kpis.activeStudents.spark} color="#0f8f72" loading={stats.loading && !s} note={historyNote || 'solved something in 7 days'} />
         <Kpi tone="violet" icon="code" label="Avg. LeetCode solved" value={s?.kpis.avgSolved.value} spark={s?.kpis.avgSolved.spark} color="#6d4fd6" loading={stats.loading && !s} note="per student" />
         <Kpi tone="amber" icon="trend" label="Solved this week" value={s?.kpis.weekSolved.value} spark={s?.kpis.weekSolved.spark} color="#b86e00" loading={stats.loading && !s} note={historyNote || 'both platforms'} />
@@ -106,7 +106,11 @@ export default function Dashboard() {
         /> : <div className="card"><div className="skeleton" style={{ height: 420 }} /></div>}
 
         <div className="stack">
-          <section className="card" aria-labelledby="ph">
+          <section className="card" aria-labelledby="ra">
+            <div className="card-head">
+              <h2 id="ra">Recent activity <SampleBadge feature="activity" /></h2>
+              {canSeeAttention(user) && <button className="link-btn" onClick={() => nav('/profile-check')}>Profile check <Icon name="chevron" /></button>}
+              <section className="card" aria-labelledby="ph">
             <div className="card-head"><h2 id="ph">Profile health <SampleBadge feature="stats" /></h2></div>
             {s ? (
               <>
@@ -114,14 +118,21 @@ export default function Dashboard() {
                 <Health label="HackerRank" badge="H" color={COLORS.hackerrank} h={s.health.hackerrank} />
               </>
             ) : <div className="skeleton" style={{ height: 130 }} />}
-            {canSeeAttention(user) && <p className="margin-note"><Icon name="arrowCurl" /> Profiles that fail to load are listed under “Needs attention”.</p>}
+            {canSeeAttention(user) && s && (
+              <ul className="check-list">
+                <li>
+                  <span>{s.toCheck.links ? `${s.toCheck.links} student${s.toCheck.links === 1 ? '' : 's'} with a link to fix` : 'All links look right'}</span>
+                  {s.toCheck.links > 0 && <button className="link-btn" onClick={() => nav('/profile-check')}>View <Icon name="chevron" /></button>}
+                </li>
+                <li>
+                  <span>{s.toCheck.stale ? `${s.toCheck.stale} student${s.toCheck.stale === 1 ? '' : 's'} not fetched or out of date` : 'All data is up to date'}</span>
+                  {s.toCheck.stale > 0 && <button className="link-btn" onClick={() => nav('/profile-check?tab=stale')}>View <Icon name="chevron" /></button>}
+                </li>
+              </ul>
+            )}
           </section>
 
-          <section className="card" aria-labelledby="ra">
-            <div className="card-head">
-              <h2 id="ra">Recent activity <SampleBadge feature="activity" /></h2>
-              {canSeeAttention(user) && <button className="link-btn" onClick={() => nav('/attention')}>Needs attention <Icon name="chevron" /></button>}
-            </div>
+        </div>
             {feed.loading && !feed.data && <div className="skeleton" style={{ height: 200 }} />}
             {feed.data && feed.data.length === 0 && <div className="empty">No notable changes in the last few days.</div>}
             {feed.data && (

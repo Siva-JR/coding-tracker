@@ -20,7 +20,11 @@ export const PROFILE_URL = {
 //
 // Everyone in scope is ranked first, and the search `q` (name or reg no) is applied to that ranked list, so a
 // student found by search keeps their real position instead of becoming "#1".
-export async function getLeaderboard(db, { platform, sort, year, deptId, limit, q = null, grants = null, now = new Date() }) {
+//
+// Positions never change with the display direction: #1 is always the top student. `reverse` only flips how the
+// list is read. With `top` (a "Top N" view) the first N are picked and then shown flipped, so a Top 10 is always the
+// ten best; without it (the "All" and search views) the list is read from the other end, so the last page can be reached.
+export async function getLeaderboard(db, { platform, sort, year, deptId, limit, q = null, reverse = false, top = false, grants = null, now = new Date() }) {
   const batchYear = year === 'all' ? null : batchYearFor(year, now);
   const today = istDate(now);
   const pattern = q ? `%${q.replace(/[\\%_]/g, '\\$&')}%` : null;
@@ -47,7 +51,7 @@ export async function getLeaderboard(db, { platform, sort, year, deptId, limit, 
        select r.*, count(*) over () as matched
        from ranked r
        where ($7::text is null or r.name ilike $7 or r.roll_no ilike $7)
-       order by r.position
+       order by case when $8::boolean then -r.position else r.position end
        limit $4
      )
      select p.student_id, p.name, p.roll_no, p.dept_code, p.batch_year,
@@ -60,8 +64,8 @@ export async function getLeaderboard(db, { platform, sort, year, deptId, limit, 
             (select e.snap_date::text from snapshots e where e.student_id = p.student_id and e.platform = $1
                order by e.snap_date asc limit 1) as first_date
      from page p
-     order by p.position`,
-    [platform, deptId, batchYear, limit, grants, today, pattern],
+     order by case when $9::boolean then -p.position else p.position end`,
+    [platform, deptId, batchYear, limit, grants, today, pattern, reverse && !top, reverse],
   );
 
   const isLeetCode = platform === 'leetcode';
@@ -71,6 +75,7 @@ export async function getLeaderboard(db, { platform, sort, year, deptId, limit, 
     year,
     deptId: deptId ?? null,
     q: q ?? null,
+    reverse,
     total: rows.length ? Number(rows[0].matched) : 0,            // students matching the filters and search
     scopeTotal: rows.length ? Number(rows[0].scope_total) : 0,   // students ranked in this scope, before the search
     asOf: rows.reduce((max, r) => (r.snap_date > max ? r.snap_date : max), '') || null,

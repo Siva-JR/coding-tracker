@@ -93,7 +93,7 @@ export async function departmentOverview(user) {
 }
 
 // ── leaderboard ─────────────────────────────────────────────────────────
-export async function leaderboard(user, { platform = 'leetcode', sort = 'solved', year = 'all', deptId, limit = 20, q = '' } = {}) {
+export async function leaderboard(user, { platform = 'leetcode', sort = 'solved', year = 'all', deptId, limit = 20, q = '', reverse = false, top = false } = {}) {
   await wait();
   if (platform === 'hackerrank' && sort === 'rank') throw new ApiError(400, 'BAD_REQUEST', 'HackerRank can only be sorted by problems solved');
   const list = visible(user, { deptId, year }).filter((s) => total(s, platform) != null && s[platform].status !== 'not_found');
@@ -108,7 +108,10 @@ export async function leaderboard(user, { platform = 'leetcode', sort = 'solved'
   const needle = String(q || '').trim().toLowerCase();
   const ranked = sorted.map((s, i) => ({ s, position: i + 1 }));          // rank everyone first, then search
   const matched = needle ? ranked.filter(({ s }) => s.name.toLowerCase().includes(needle) || s.rollNo.toLowerCase().includes(needle)) : ranked;
-  const entries = matched.slice(0, limit).map(({ s, position }) => ({
+  // Positions stay put; `reverse` only changes the reading order (a flipped Top N is still the best N).
+  const picked = reverse && !top ? matched.slice(-limit) : matched.slice(0, limit);
+  if (reverse) picked.reverse();
+  const entries = picked.map(({ s, position }) => ({
     position, studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, batchYear: s.batchYear, yearOfStudy: yearOf(s),
     solved: platform === 'leetcode'
       ? { total: total(s, platform), easy: s.leetcode.easy, medium: s.leetcode.medium, hard: s.leetcode.hard }
@@ -186,6 +189,10 @@ export async function stats(user, { deptId } = {}) {
     },
     timeline: points,
     health: { leetcode: health('leetcode'), hackerrank: health('hackerrank') },
+    toCheck: {
+      links: list.filter((s) => s.leetcode.status === 'not_found' || s.hackerrank.status === 'not_found').length,
+      stale: list.filter((s) => ['leetcode', 'hackerrank'].some((p) => s[p].status === 'error' || (s[p].status === 'ok' && s[p].lastOk && daysBetween(s[p].lastOk) >= 3 && s[p].lastOk !== TODAY_ISO))).length,
+    },
     needsAttention: list.filter((s) => s.leetcode.status !== 'ok' || s.hackerrank.status !== 'ok').length,
   };
 }
@@ -277,7 +284,8 @@ export async function attention(user, { deptId } = {}) {
       const username = p === 'leetcode' ? s.leetcodeUsername : s.hackerrankUsername;
       const base = { studentId: s.id, name: s.name, rollNo: s.rollNo, deptCode: s.deptCode, yearOfStudy: yearOf(s), platform: p, username, url: profileUrl(p, username) };
       if (st.status !== 'ok') broken.push({ ...base, status: st.status, error: st.lastError, lastOk: st.lastOk, batchYear: s.batchYear });
-      else if (st.lastOk && st.lastOk !== TODAY_ISO && daysBetween(st.lastOk) >= 3) stale.push({ ...base, lastOk: st.lastOk });
+      if (st.status === 'error') stale.push({ ...base, lastOk: st.lastOk, reason: st.lastOk ? 'failed' : 'not_fetched', error: st.lastError });
+      else if (st.status === 'ok' && st.lastOk && st.lastOk !== TODAY_ISO && daysBetween(st.lastOk) >= 3) stale.push({ ...base, lastOk: st.lastOk, reason: 'stale' });
     }
     const bad = ['leetcode', 'hackerrank'].filter((p) => s[p].status === 'not_found');
     if (bad.length) {

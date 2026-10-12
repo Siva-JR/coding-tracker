@@ -28,7 +28,7 @@ function MultiDeptOnly({ children }) {
   return multi ? children : <Navigate to="/" replace />;
 }
 
-// Admins and HoDs only; the principal and vice-principal have no needs-attention lists.
+// Admins and HoDs only; the principal and vice-principal have no Profile check lists.
 function AttentionOnly({ children }) {
   const { user } = useAuth();
   return canSeeAttention(user) ? children : <Navigate to="/" replace />;
@@ -47,7 +47,8 @@ export default function App() {
               <Route path="dept/:deptId" element={<MultiDeptOnly><Dashboard /></MultiDeptOnly>} />
               <Route path="departments" element={<MultiDeptOnly><Departments /></MultiDeptOnly>} />
               <Route path="student/:id" element={<StudentDetail />} />
-              <Route path="attention" element={<AttentionOnly><Attention /></AttentionOnly>} />
+              <Route path="profile-check" element={<AttentionOnly><Attention /></AttentionOnly>} />
+              <Route path="attention" element={<Navigate to="/profile-check" replace />} />
               <Route path="admin" element={<Admin />} />
               <Route path="present" element={<Present />} />
             </Route>

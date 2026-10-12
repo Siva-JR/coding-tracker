@@ -8,6 +8,7 @@ import { COLORS } from './Charts.jsx';
 import { Icon } from './Icons.jsx';
 import { useScope } from '../context/Scope.jsx';
 import GithubList from './GithubList.jsx';
+import ExportMenu from './ExportMenu.jsx';
 
 // "How many to show": Top 3 -> 5 -> 10 -> 20 -> everyone, then 10 more at a time.
 export const TOP_CHOICES = [3, 5, 10, 20];
@@ -43,7 +44,21 @@ const Stars = ({ n }) => (n == null ? '—' : (
 
 const Delta = ({ v }) => (v > 0 ? <span className="delta">▲ {v}</span> : <span className="delta zero">–</span>);
 
-export function LeaderboardTable({ data, platform, showDept, onOpen }) {
+// A column header that sorts the list. The arrow shows which way the active column is read: ▼ most first (solved),
+// ▲ best rank first (global rank); clicking the active column flips it, clicking another moves the sort there.
+function SortHead({ id, label, sort, reverse, onSort, className }) {
+  const active = sort === id;
+  const down = id === 'solved' ? !reverse : reverse; // global rank reads 1, 2, 3… by default, so its default arrow points up
+  return (
+    <th scope="col" className={className} aria-sort={active ? (down ? 'descending' : 'ascending') : 'none'}>
+      <button className={`th-sort${active ? ' on' : ''}`} onClick={() => onSort(id)} title={`Sort by ${label.toLowerCase()}`}>
+        {label}<span className="arrow" aria-hidden="true">{active ? (down ? '▼' : '▲') : '↕'}</span>
+      </button>
+    </th>
+  );
+}
+
+export function LeaderboardTable({ data, platform, showDept, onOpen, sort, reverse, onSort }) {
   const lc = platform === 'leetcode';
   const showGain = data.entries.some((e) => e.weekGain != null);
   return (
@@ -57,8 +72,8 @@ export function LeaderboardTable({ data, platform, showDept, onOpen }) {
             {showDept && <th scope="col">Dept</th>}
             <th scope="col">Year</th>
             {lc && <th scope="col">Easy · Med · Hard</th>}
-            <th scope="col" className="r">Solved</th>
-            <th scope="col" className="r">{lc ? 'Global rank' : 'Stars'}</th>
+            {onSort ? <SortHead id="solved" label="Solved" sort={sort} reverse={reverse} onSort={onSort} className="r" /> : <th scope="col" className="r">Solved</th>}
+            {onSort && lc ? <SortHead id="rank" label="Global rank" sort={sort} reverse={reverse} onSort={onSort} className="r" /> : <th scope="col" className="r">{lc ? 'Global rank' : 'Stars'}</th>}
             {showGain && <th scope="col" className="r">7 days</th>}
           </tr>
         </thead>
@@ -95,9 +110,9 @@ export function LeaderboardTable({ data, platform, showDept, onOpen }) {
 }
 
 // The ranked table for LeetCode / HackerRank, with the "show more" button underneath.
-function RankedPane({ platform, sort, year, deptId, shown, q, mode, top, showDept, onMore, onMeta }) {
+function RankedPane({ platform, sort, reverse, year, deptId, shown, q, mode, top, showDept, onMore, onMeta, onSort }) {
   const nav = useNavigate();
-  const request = useMemo(() => ({ platform, sort, year, deptId, q, limit: Math.min(shown, MAX_ROWS) }), [platform, sort, year, deptId, q, shown]);
+  const request = useMemo(() => ({ platform, sort, year, deptId, q, reverse, top: mode === 'top', limit: Math.min(shown, MAX_ROWS) }), [platform, sort, year, deptId, q, shown, reverse, mode]);
   const { data, loading, error, reload } = useAsync(() => api.leaderboard(request), [request]);
   useEffect(() => { onMeta({ asOf: data?.asOf ?? null, total: data?.total ?? null }); }, [data?.asOf, data?.total]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -116,7 +131,7 @@ function RankedPane({ platform, sort, year, deptId, shown, q, mode, top, showDep
       )}
       {data && data.entries.length > 0 && (
         <div style={{ opacity: loading ? 0.55 : 1, transition: 'opacity .15s' }}>
-          <LeaderboardTable data={data} platform={platform} showDept={showDept} onOpen={has('student') ? (id) => nav(`/student/${id}`) : undefined} />
+          <LeaderboardTable data={data} platform={platform} showDept={showDept} sort={sort} reverse={reverse} onSort={onSort} onOpen={has('student') ? (id) => nav(`/student/${id}`) : undefined} />
           <div className="lb-foot">
             <span className="hint">
               Showing {data.entries.length} of {data.total} student{data.total === 1 ? '' : 's'}{q ? ` matching “${q}”` : ''}
@@ -126,7 +141,7 @@ function RankedPane({ platform, sort, year, deptId, shown, q, mode, top, showDep
         </div>
       )}
       <p className="hint" style={{ marginTop: 10 }}>
-        Counts show practice activity, not skill. Students with a broken profile are listed under Needs attention instead.
+        Counts show practice activity, not skill. Students whose profile can’t be read are listed under Profile check instead.
       </p>
     </>
   );
@@ -138,6 +153,7 @@ export default function Leaderboard({ deptId, showDept, allowDeptFilter, departm
   const yearTabs = useMemo(() => yearTabsFor(allowedYears), [allowedYears]);
   const [platform, setPlatform] = useState('leetcode');
   const [sort, setSort] = useState('solved');
+  const [reverse, setReverse] = useState(false);     // read the list from the other end (positions stay the same)
   const [year, setYear] = useState('all');
   const [top, setTop] = useState(20);                 // 3 | 5 | 10 | 20 | 'all'
   const [allCount, setAllCount] = useState(FIRST_ALL);
@@ -148,13 +164,17 @@ export default function Leaderboard({ deptId, showDept, allowDeptFilter, departm
 
   useEffect(() => { const t = setTimeout(() => setQ(text.trim()), 250); return () => clearTimeout(t); }, [text]);
   // A different list starts again from the top.
-  useEffect(() => { setAllCount(FIRST_ALL); setSearchCount(FIRST_SEARCH); }, [platform, sort, year, deptId, q]);
+  useEffect(() => { setAllCount(FIRST_ALL); setSearchCount(FIRST_SEARCH); }, [platform, sort, reverse, year, deptId, q]);
 
   const ranked = platform !== 'github';
   const searching = ranked && !!q;
   const mode = searching ? 'search' : top === 'all' ? 'all' : 'top';
   const shown = searching ? searchCount : top === 'all' ? allCount : top;
   const effSort = platform === 'hackerrank' ? 'solved' : sort;
+  const onSort = (id) => {
+    if (id === effSort) setReverse((r) => !r);
+    else { setSort(id); setReverse(false); }
+  };
   const where = deptId ? 'in the department' : 'across the college';
 
   const showMore = () => {
@@ -163,6 +183,8 @@ export default function Leaderboard({ deptId, showDept, allowDeptFilter, departm
     else setSearchCount((c) => c + MORE);
   };
 
+  const yearName = year === 'all' ? 'all years' : `${romanYear(Number(year))} Year`;
+  const viewLabel = `${platform === 'leetcode' ? 'LeetCode' : 'HackerRank'} · ${searching ? 'search results' : mode === 'top' ? `Top ${top}` : 'everyone'} · ${yearName}`;
   let heading = `GitHub profiles ${where}`;
   if (searching) heading = `Search results${meta.total != null ? ` · ${meta.total} found` : ''}`;
   else if (ranked) heading = top === 'all' ? `All students ${where}` : `Top ${top} ${where}`;
@@ -214,21 +236,15 @@ export default function Leaderboard({ deptId, showDept, allowDeptFilter, departm
               </div>
             )}
             {searching && <span className="hint">Searching everyone in this list. Clear the search to go back to Top {top === 'all' ? 'All' : top}.</span>}
-            {platform === 'leetcode' && (
-              <div className="lb-group lb-sort">
-                <span className="lb-label">Sort by</span>
-                <div className="seg" role="group" aria-label="Sort by">
-                  <button aria-pressed={sort === 'solved'} onClick={() => setSort('solved')}>Problems solved</button>
-                  <button aria-pressed={sort === 'rank'} onClick={() => setSort('rank')}>Global rank</button>
-                </div>
-              </div>
-            )}
+            <div className="lb-group lb-export">
+              <ExportMenu platform={platform} sort={effSort} reverse={reverse} year={year} deptId={deptId} q={q} mode={mode} top={top} viewLabel={viewLabel} />
+            </div>
           </div>
         )}
       </div>
 
       {ranked
-        ? <RankedPane platform={platform} sort={effSort} year={year} deptId={deptId} shown={shown} q={q} mode={mode} top={top} showDept={showDept} onMore={showMore} onMeta={setMeta} />
+        ? <RankedPane platform={platform} sort={effSort} reverse={reverse} onSort={onSort} year={year} deptId={deptId} shown={shown} q={q} mode={mode} top={top} showDept={showDept} onMore={showMore} onMeta={setMeta} />
         : <GithubList deptId={deptId} year={year} q={q} showDept={showDept} />}
     </section>
   );

@@ -14,6 +14,7 @@ export const github = (q) => get('/api/github', { deptId: q.deptId, year: q.year
 
 export const leaderboard = (q) => get('/api/leaderboard', {
   platform: q.platform, sort: q.sort, year: q.year, deptId: q.deptId, limit: q.limit, q: q.q,
+  reverse: q.reverse ? 'true' : undefined, top: q.top ? 'true' : undefined,
 }).then((data) => ({
   ...data,
   count: data.total ?? data.entries.length,

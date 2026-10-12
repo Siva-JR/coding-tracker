@@ -97,7 +97,8 @@ test('profile health and attention reflect account state', async () => {
 
   const a = (await c.get('/api/attention')).body;
   assert.deepEqual(a.broken.map((x) => [x.name, x.status]).sort(), [['Bob', 'not_found'], ['Dan', 'error']]);
-  assert.deepEqual(a.stale.map((x) => x.name), ['Cat']);
+  assert.deepEqual(a.stale.map((x) => [x.name, x.reason]).sort(), [['Cat', 'stale'], ['Dan', 'failed']], 'failed and old fetches are both listed; a profile that does not exist is not');
+  assert.deepEqual(stats.toCheck, { links: 4, stale: 2 }, 'all four lack a HackerRank link; Cat and Dan are stale');
   assert.equal(a.inactiveAvailable, false);
   assert.deepEqual(a.inactive, []);
 });

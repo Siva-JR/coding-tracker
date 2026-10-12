@@ -114,7 +114,7 @@ h1, h2, h3, p { margin: 0; }
 .toolbar.right .tip { right: 58px; }
 .tool:hover .tip, .tool:focus-visible .tip { opacity: 1; }
 .tool-sep { height: 1px; margin: 4px 8px; background: var(--line); }
-.tool .dot { position: absolute; top: 8px; right: 8px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--red); color: #fff; font-size: 10px; font-weight: 800; display: grid; place-items: center; }
+.tool .dot { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px #fff; }
 
 .popover {
   position: absolute; right: 58px; top: 50%; transform: translateY(-50%); z-index: 6; width: 250px; padding: 14px;
@@ -409,6 +409,17 @@ select.lb-dept { width: auto; min-width: 170px; height: 40px; }
 .seg-years .yr-sub { font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .seg-years button[aria-selected='true'] .yr-sub { color: var(--accent-ink); }
 .lb-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+/* sortable column headers and the export menu */
+.th-sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
+.th-sort:hover { color: var(--ink); }
+.th-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.th-sort .arrow { font-size: 10px; opacity: 0.45; }
+.th-sort.on { color: var(--ink); }
+.th-sort.on .arrow { opacity: 1; color: var(--accent-ink); }
+.export-menu { position: relative; }
+.export-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 8; min-width: 250px; padding: 6px; border-radius: 12px; background: #fff; box-shadow: 0 18px 40px -16px rgba(20, 38, 31, 0.4), 0 0 0 1px var(--line); display: grid; gap: 2px; }
+.export-pop button { all: unset; cursor: pointer; display: grid; gap: 2px; padding: 8px 12px; border-radius: 8px; }
+.export-pop button:hover, .export-pop button:focus-visible { background: var(--accent-soft); }
 @media (max-width: 700px) {
   .lb-search { width: 100%; }
   .lb-sort { width: 100%; }
@@ -416,3 +427,6 @@ select.lb-dept { width: auto; min-width: 170px; height: 40px; }
   .lb-controls .seg button { padding: 7px 11px; }
   .seg-years button { padding: 5px 11px; }
 }
+
+.check-list { list-style: none; margin: 14px 0 0; padding: 10px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 8px; font-size: 13px; }
+.check-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

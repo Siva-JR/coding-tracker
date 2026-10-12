@@ -113,6 +113,28 @@ function healthOf(students, accounts, platform) {
 const accountStatus = (a) => (a.state === 'broken' ? 'not_found' : a.last_error ? 'error' : 'ok');
 const needsAttention = (a) => accountStatus(a) !== 'ok';
 
+// Why a linked profile's numbers can't be trusted yet (null when they are fine). A profile that does not exist
+// is not here: that is a link to fix, not old data.
+//   failed: the last fetch did not work   not_fetched: never fetched   stale: nothing new for STALE_DAYS or more
+function staleReason(a, today) {
+  if (a.state === 'broken') return null;
+  if (a.last_error) return 'failed';
+  if (!a.last_ok_at) return 'not_fetched';
+  return daysBetween(istDate(new Date(a.last_ok_at)), today) >= STALE_DAYS ? 'stale' : null;
+}
+
+// What "Profile check" lists, as counts of students: links to fix, and data that is not fetched or out of date.
+function toCheckOf(students, accounts, today) {
+  let links = 0;
+  let stale = 0;
+  for (const s of students) {
+    const mine = PLATFORMS.map((p) => accounts.get(key(s.id, p)));
+    if (mine.some((a) => !a || a.state === 'broken')) links += 1;
+    if (mine.some((a) => a && staleReason(a, today))) stale += 1;
+  }
+  return { links, stale };
+}
+
 async function weeklyTotals(db, ids, today) {
   // For each of the last 13 week-ends, the last snapshot on or before it for every student and platform.
   const { rows } = await db.query(
@@ -178,6 +200,7 @@ export async function getStats(db, { deptId = null, grants = null, now = new Dat
   const empty = {
     asOf: null, historyDays: 0, timeline: [], needsAttention: 0,
     kpis: { totalStudents: { value: 0, spark: null }, activeStudents: { value: 0, spark: null }, avgSolved: { value: 0, spark: null }, weekSolved: { value: 0, spark: null } },
+    toCheck: { links: 0, stale: 0 },
     health: { leetcode: { ok: 0, total: 0, pct: 0 }, hackerrank: { ok: 0, total: 0, pct: 0 } },
   };
   if (!ids.length) return empty;
@@ -202,6 +225,7 @@ export async function getStats(db, { deptId = null, grants = null, now = new Dat
     asOf,
     historyDays: historyDaysOf(facts),
     timeline,
+    toCheck: toCheckOf(students, accounts, today),
     needsAttention: students.filter((s) => PLATFORMS.some((p) => { const a = accounts.get(key(s.id, p)); return a && needsAttention(a); })).length,
     kpis: {
       totalStudents: { value: students.length, spark: null },
@@ -278,7 +302,8 @@ export async function getAttention(db, { deptId = null, grants = null, now = new
         lastOk: a.last_ok_at ? istDate(new Date(a.last_ok_at)) : null,
       };
       if (needsAttention(a)) out.broken.push({ ...base, status: accountStatus(a), error: a.last_error });
-      else if (base.lastOk && daysBetween(base.lastOk, today) >= STALE_DAYS) out.stale.push(base);
+      const reason = staleReason(a, today);
+      if (reason) out.stale.push({ ...base, reason, error: a.last_error });
     }
   }
 
